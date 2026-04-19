@@ -1,0 +1,4 @@
+interface:
+  display_name: "Daily Report Table"
+  short_description: "Convert pasted TCP reports into fixed daily tables."
+  default_prompt: "Use $daily-report-table to turn pasted TCP daily report text into the main report table and, when needed, a 光斑调试表."

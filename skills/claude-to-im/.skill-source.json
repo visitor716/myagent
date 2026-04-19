@@ -1,0 +1,14 @@
+{
+  "name": "claude-to-im",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/claude-to-im",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/claude-to-im",
+    "/home/zhanxp/.codex/skills/Claude-to-IM-skill",
+    "/home/zhanxp/.claude/skills/claude-to-im",
+    "/home/zhanxp/.claude/skills/Claude-to-IM-skill"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Canonical source is lowercase claude-to-im. Preserve Claude-to-IM-skill as a runtime compatibility alias."
+}

@@ -1,0 +1,12 @@
+{
+  "name": "deploy-to-vercel",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/deploy-to-vercel",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/deploy-to-vercel",
+    "/home/zhanxp/.claude/skills/deploy-to-vercel"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "User-managed custom skill migrated from .cc-switch."
+}

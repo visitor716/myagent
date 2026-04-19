@@ -1,0 +1,6 @@
+name: openai
+purpose: Drive the Telegram bot creation and bridge rebinding workflow with strong emphasis on token secrecy, config safety, and end-to-end verification.
+defaults:
+  runtime_skill: claude-to-im
+  config_path: ~/.claude-to-im/config.env
+  telegram_api_base: https://api.telegram.org

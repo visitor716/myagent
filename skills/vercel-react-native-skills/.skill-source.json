@@ -1,0 +1,12 @@
+{
+  "name": "vercel-react-native-skills",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/vercel-react-native-skills",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/vercel-react-native-skills",
+    "/home/zhanxp/.claude/skills/vercel-react-native-skills"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "User-managed custom skill migrated from .cc-switch."
+}

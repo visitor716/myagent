@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Shared Skills"
+  short_description: "Sync common Codex and Claude Code skills safely."
+  default_prompt: "Sync common user skills from the current harness to the opposite skills directory, skip runtime-only items, and do not overwrite unmanaged conflicts."

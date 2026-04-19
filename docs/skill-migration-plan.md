@@ -34,6 +34,7 @@ This keeps custom assets independent from OMX install/uninstall behavior.
 
 - Use one directory per custom skill under `skills/`.
 - Directory names should be lowercase kebab-case.
+- Legacy runtime names may be preserved as compatibility aliases, but the repo source should prefer one canonical directory name.
 - The directory name is the runtime mount name.
 - Each skill must contain a `SKILL.md`.
 - Each skill should contain a `.skill-source.json` metadata file.
@@ -62,6 +63,11 @@ Preferred strategy:
 1. Keep the real files only under `/home/zhanxp/projects/myagent/skills/`.
 2. Make `~/.codex/skills/<name>` a symlink to `/home/zhanxp/projects/myagent/skills/<name>`.
 3. Make `~/.claude/skills/<name>` a symlink to `/home/zhanxp/projects/myagent/skills/<name>`.
+
+Compatibility aliases:
+
+- When an existing workflow depends on an old runtime name, create a symlink alias that points to the canonical repo path.
+- Example: `~/.codex/skills/Claude-to-IM-skill -> /home/zhanxp/projects/myagent/skills/claude-to-im`
 
 Fallback strategy:
 
