@@ -1,0 +1,4 @@
+interface:
+  display_name: "NeoCD Change Workflow"
+  short_description: "Implement NeoCD changes with repo rules and validation"
+  default_prompt: "Use $neocd-change-workflow to implement a NeoCD repository change and verify it against the repo workflow."
