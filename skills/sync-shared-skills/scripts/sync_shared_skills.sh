@@ -7,9 +7,16 @@ MANAGED_MARKER="Managed by sync-shared-skills"
 SOURCE_SIDE="auto"
 DRY_RUN=0
 VERBOSE=0
+SYNC_CONFIGS=0
 
 CODEX_ROOT="${CODEX_HOME:-$HOME/.codex}/skills"
-CLAUDE_ROOT="${CLAUDE_SKILLS_HOME:-$HOME/.claude/skills}"
+CLAUDE_ROOT="${CLAUDE_SKILLS_HOME:-$HOME/.claude}/skills"
+
+MYAGENT_ROOT="/home/zhanxp/projects/myagent"
+CLAUDE_SETTINGS_RUNTIME="$HOME/.claude/settings.json"
+CLAUDE_SETTINGS_SOURCE="$MYAGENT_ROOT/configs/claude-code/settings.json"
+CODEX_CONFIG_RUNTIME="$HOME/.codex/config.toml"
+CODEX_CONFIG_SOURCE="$MYAGENT_ROOT/configs/codex/config.toml"
 
 CREATED=0
 UPDATED=0
@@ -21,11 +28,31 @@ usage() {
   cat <<'EOF'
 Usage:
   sync_shared_skills.sh --source <codex|claude> [--dry-run] [--verbose]
+  sync_shared_skills.sh --configs <backup|restore|validate> [--dry-run]
 
-Options:
-  --source   Required. Select which side is the source.
-  --dry-run  Print planned changes without modifying files.
-  --verbose  Print per-skill decisions.
+Commands:
+  Skills sync (default):
+    --source   Required. Select which side is the source.
+    --dry-run  Print planned changes without modifying files.
+    --verbose  Print per-skill decisions.
+
+  Configs sync:
+    --configs  Sync Claude Code / Codex configurations.
+               Subcommands: backup, restore, validate
+    --dry-run  Print planned changes without modifying files.
+
+Examples:
+  # Sync skills from Codex to Claude Code
+  sync_shared_skills.sh --source codex --dry-run --verbose
+
+  # Backup runtime configs to myagent
+  sync_shared_skills.sh --configs backup
+
+  # Restore configs from myagent to runtime
+  sync_shared_skills.sh --configs restore
+
+  # Validate config formats
+  sync_shared_skills.sh --configs validate
 EOF
 }
 
@@ -88,6 +115,10 @@ same_target() {
 
   [[ -n "$left_real" && -n "$right_real" && "$left_real" == "$right_real" ]]
 }
+
+# ============================================================
+# Skills sync functions
+# ============================================================
 
 is_excluded_name() {
   local name="$1"
@@ -256,12 +287,147 @@ sync_from_claude() {
   done
 }
 
+# ============================================================
+# Configs sync functions
+# ============================================================
+
+validate_json() {
+  local file="$1"
+  if command -v jq &> /dev/null; then
+    jq empty "$file" 2>/dev/null && return 0 || return 1
+  else
+    [[ $(head -c 1 "$file") == "{" ]] && return 0 || return 1
+  fi
+}
+
+validate_toml() {
+  local file="$1"
+  grep -qE '^[a-zA-Z_]+\s*=|^\[' "$file" && return 0 || return 1
+}
+
+configs_validate() {
+  log "Validating config formats..."
+  local has_error=0
+
+  if [[ -f "$CLAUDE_SETTINGS_SOURCE" ]]; then
+    if validate_json "$CLAUDE_SETTINGS_SOURCE"; then
+      log "  [OK] Claude Code settings.json"
+    else
+      log "  [ERROR] Claude Code settings.json format invalid"
+      has_error=1
+    fi
+  else
+    log "  [WARN] Claude Code settings.json not found: $CLAUDE_SETTINGS_SOURCE"
+  fi
+
+  if [[ -f "$CODEX_CONFIG_SOURCE" ]]; then
+    if validate_toml "$CODEX_CONFIG_SOURCE"; then
+      log "  [OK] Codex config.toml"
+    else
+      log "  [ERROR] Codex config.toml format invalid"
+      has_error=1
+    fi
+  else
+    log "  [WARN] Codex config.toml not found: $CODEX_CONFIG_SOURCE"
+  fi
+
+  if [[ $has_error -eq 0 ]]; then
+    log "All validations passed."
+    return 0
+  else
+    return 1
+  fi
+}
+
+configs_backup() {
+  log "Backing up runtime configs to myagent..."
+
+  ensure_dir "$(dirname "$CLAUDE_SETTINGS_SOURCE")"
+  ensure_dir "$(dirname "$CODEX_CONFIG_SOURCE")"
+
+  if [[ -f "$CLAUDE_SETTINGS_RUNTIME" ]]; then
+    run cp "$CLAUDE_SETTINGS_RUNTIME" "$CLAUDE_SETTINGS_SOURCE"
+    log "  [OK] Claude Code config backed up to $CLAUDE_SETTINGS_SOURCE"
+    log "  [WARN] Please review and sanitize sensitive data before committing"
+  else
+    log "  [WARN] Claude Code runtime config not found: $CLAUDE_SETTINGS_RUNTIME"
+  fi
+
+  if [[ -f "$CODEX_CONFIG_RUNTIME" ]]; then
+    run cp "$CODEX_CONFIG_RUNTIME" "$CODEX_CONFIG_SOURCE"
+    log "  [OK] Codex config backed up to $CODEX_CONFIG_SOURCE"
+  else
+    log "  [WARN] Codex runtime config not found: $CODEX_CONFIG_RUNTIME"
+  fi
+}
+
+configs_restore() {
+  log "Restoring configs from myagent to runtime directories..."
+
+  if [[ -f "$CLAUDE_SETTINGS_SOURCE" ]]; then
+    if [[ -f "$CLAUDE_SETTINGS_RUNTIME" ]]; then
+      run cp "$CLAUDE_SETTINGS_RUNTIME" "$CLAUDE_SETTINGS_RUNTIME.bak.$(date +%Y%m%d_%H%M%S)"
+      log "  [OK] Claude Code runtime config backed up"
+    fi
+    run cp "$CLAUDE_SETTINGS_SOURCE" "$CLAUDE_SETTINGS_RUNTIME"
+    log "  [OK] Claude Code config restored to $CLAUDE_SETTINGS_RUNTIME"
+  else
+    log "  [ERROR] Source config not found: $CLAUDE_SETTINGS_SOURCE"
+    return 1
+  fi
+
+  if [[ -f "$CODEX_CONFIG_SOURCE" ]]; then
+    if [[ -f "$CODEX_CONFIG_RUNTIME" ]]; then
+      run cp "$CODEX_CONFIG_RUNTIME" "$CODEX_CONFIG_RUNTIME.bak.$(date +%Y%m%d_%H%M%S)"
+      log "  [OK] Codex runtime config backed up"
+    fi
+    run cp "$CODEX_CONFIG_SOURCE" "$CODEX_CONFIG_RUNTIME"
+    log "  [OK] Codex config restored to $CODEX_CONFIG_RUNTIME"
+  else
+    log "  [ERROR] Source config not found: $CODEX_CONFIG_SOURCE"
+    return 1
+  fi
+}
+
+configs_sync() {
+  local subcmd="${1:-validate}"
+
+  case "$subcmd" in
+    validate)
+      configs_validate
+      ;;
+    backup)
+      configs_backup
+      ;;
+    restore)
+      configs_restore
+      ;;
+    *)
+      die "Unknown configs subcommand: $subcmd. Use: backup, restore, validate"
+      ;;
+  esac
+}
+
+# ============================================================
+# Main
+# ============================================================
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --source)
       [[ $# -ge 2 ]] || die "--source requires a value"
       SOURCE_SIDE="$2"
       shift 2
+      ;;
+    --configs)
+      SYNC_CONFIGS=1
+      if [[ $# -ge 2 && ! "$2" =~ ^-- ]]; then
+        CONFIGS_CMD="$2"
+        shift 2
+      else
+        CONFIGS_CMD="validate"
+        shift
+      fi
       ;;
     --dry-run)
       DRY_RUN=1
@@ -282,6 +448,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Configs sync mode
+if [[ "$SYNC_CONFIGS" -eq 1 ]]; then
+  configs_sync "${CONFIGS_CMD:-validate}"
+  exit 0
+fi
+
+# Skills sync mode
 case "$SOURCE_SIDE" in
   codex)
     SOURCE_ROOT="$CODEX_ROOT"

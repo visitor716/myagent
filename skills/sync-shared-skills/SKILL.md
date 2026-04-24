@@ -12,6 +12,7 @@ Sync common, cross-harness user skills between `~/.codex/skills` and `~/.claude/
 - The user says `同步skill`, `同步技能`, `sync skill`, `sync skills`, `share skills`, or asks Codex and Claude Code to share the same user skills.
 - You need to make a newly added user skill available in the opposite harness.
 - You need to refresh Codex wrappers for Claude flat `*.md` skills.
+- The user says `同步配置`, `sync configs`, `备份配置`, `恢复配置`, or asks to sync Claude Code / Codex settings between runtime and myagent.
 
 ## What Counts as a Common Skill
 
@@ -62,13 +63,48 @@ bash scripts/sync_shared_skills.sh --source claude --dry-run --verbose
 - If the target is unmanaged and different, skip it and report the conflict.
 - Do not remove existing files or symlinks unless the user explicitly asks.
 
+## Configs Sync
+
+In addition to skills, this script can sync Claude Code and Codex configuration files between runtime directories and the myagent source-of-truth repository.
+
+### Backup runtime configs to myagent
+
+```bash
+bash scripts/sync_shared_skills.sh --configs backup
+```
+
+Copies `~/.claude/settings.json` and `~/.codex/config.toml` to `/home/zhanxp/projects/myagent/configs/`.
+**After backup, review and sanitize sensitive data (API keys, tokens) before committing.**
+
+### Restore configs from myagent to runtime
+
+```bash
+bash scripts/sync_shared_skills.sh --configs restore
+```
+
+Restores configs from myagent to runtime directories. Creates timestamped backups of existing runtime configs.
+
+### Validate config formats
+
+```bash
+bash scripts/sync_shared_skills.sh --configs validate
+```
+
+Validates JSON/TOML format of the stored config templates.
+
 ## Verification
 
 - After changing the sync logic, run:
 
 ```bash
+# Skills sync dry-run
 bash scripts/sync_shared_skills.sh --source codex --dry-run --verbose
 bash scripts/sync_shared_skills.sh --source claude --dry-run --verbose
+
+# Configs sync dry-run
+bash scripts/sync_shared_skills.sh --configs backup --dry-run
+bash scripts/sync_shared_skills.sh --configs restore --dry-run
+bash scripts/sync_shared_skills.sh --configs validate
 ```
 
 - If this skill itself needs to be callable from Claude Code, ensure `~/.claude/skills/sync-shared-skills` exists, preferably as a symlink to the Codex skill directory.

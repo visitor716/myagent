@@ -1,0 +1,22 @@
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+[mcp_servers]
+
+[mcp_servers.chrome-devtools]
+type = "stdio"
+command = "cmd"
+args = ["/c", "npx", "chrome-devtools-mcp@latest"]
+
+[mcp_servers.context7]
+type = "stdio"
+command = "cmd"
+args = ["/c", "npx", "-y", "@upstash/context7-mcp"]
+
+[projects."/home/zhanxp/projects/MyAgent"]
+trust_level = "trusted"
+
+[projects."/home/zhanxp/projects/myagent"]
+trust_level = "trusted"
+
+[tui.model_availability_nux]
+"gpt-5.5" = 1

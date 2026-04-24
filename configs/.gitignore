@@ -1,0 +1,7 @@
+# 忽略包含真实密钥的本地配置文件
+# 这些文件不应提交到 git
+
+claude-code/settings.local.json
+codex/config.local.toml
+.env
+*.local
