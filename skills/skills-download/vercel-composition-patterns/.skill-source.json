@@ -1,0 +1,12 @@
+{
+  "name": "vercel-composition-patterns",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/vercel-composition-patterns",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/vercel-composition-patterns",
+    "/home/zhanxp/.codex/skills/vercel-composition-patterns"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "User-managed custom skill migrated from .cc-switch."
+}

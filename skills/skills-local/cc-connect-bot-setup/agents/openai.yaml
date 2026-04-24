@@ -1,0 +1,4 @@
+interface:
+  display_name: "cc-connect Bot Setup"
+  short_description: "Configure cc-connect bot permissions and startup."
+  default_prompt: "Use $cc-connect-bot-setup to inspect ~/.cc-connect/config.toml, configure per-bot full-auto modes for Claude Code and Codex, and verify restart readiness."

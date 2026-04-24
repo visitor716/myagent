@@ -1,0 +1,12 @@
+{
+  "name": "code-review",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/code-review",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/code-review",
+    "/home/zhanxp/.codex/skills/code-review"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Downloaded custom skill for code review workflows."
+}

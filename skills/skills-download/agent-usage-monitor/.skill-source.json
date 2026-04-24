@@ -1,0 +1,12 @@
+{
+  "name": "agent-usage-monitor",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/agent-usage-monitor",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/agent-usage-monitor",
+    "/home/zhanxp/.codex/skills/agent-usage-monitor"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Agent usage monitor skill - takes screenshots and sends notifications."
+}

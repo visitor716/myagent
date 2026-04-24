@@ -1,1 +1,9 @@
 .omx/
+
+# Generated runtime/dependency artifacts inside migrated skills
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/.playwright/
+**/.playwright*/
+**/*:Zone.Identifier

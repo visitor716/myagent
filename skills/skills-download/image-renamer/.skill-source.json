@@ -1,0 +1,12 @@
+{
+  "name": "image-renamer",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/image-renamer",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/image-renamer",
+    "/home/zhanxp/.codex/skills/image-renamer"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "图片智能重命名工具 - 使用 OCR 识别图片内容并提取关键字进行重命名"
+}

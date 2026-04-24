@@ -1,0 +1,12 @@
+{
+  "name": "coding-standards",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/coding-standards",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/coding-standards",
+    "/home/zhanxp/.codex/skills/coding-standards"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Downloaded custom skill for coding standards guidance."
+}

@@ -1,0 +1,28 @@
+{
+  "interval": 30,
+  "screenshotDelay": 2000,
+  "notificationChannel": "telegram",
+  "agents": [
+    {
+      "id": "claude-sonnet-4-6",
+      "name": "Claude Sonnet 4.6",
+      "url": "https://claude.ai/usage",
+      "usageSelector": ".usage-statistics",
+      "enabled": true
+    },
+    {
+      "id": "gpt-4-turbo",
+      "name": "GPT-4 Turbo",
+      "url": "https://platform.openai.com/account/usage",
+      "usageSelector": "#usage-summary",
+      "enabled": true
+    },
+    {
+      "id": "anthropic-opus",
+      "name": "Anthropic Opus",
+      "url": "https://console.anthropic.com/usage",
+      "usageSelector": ".usage-dashboard",
+      "enabled": false
+    }
+  ]
+}

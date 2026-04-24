@@ -1,0 +1,12 @@
+{
+  "name": "vercel-react-best-practices",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/vercel-react-best-practices",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/vercel-react-best-practices",
+    "/home/zhanxp/.codex/skills/vercel-react-best-practices"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "User-managed custom skill migrated from .cc-switch."
+}

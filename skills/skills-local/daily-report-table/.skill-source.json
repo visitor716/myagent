@@ -1,0 +1,11 @@
+{
+  "name": "daily-report-table",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/daily-report-table",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/daily-report-table"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for generating daily report tables."
+}

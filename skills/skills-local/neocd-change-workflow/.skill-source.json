@@ -1,0 +1,11 @@
+{
+  "name": "neocd-change-workflow",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/neocd-change-workflow",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/neocd-change-workflow"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for NeoCD change workflows."
+}

@@ -1,0 +1,12 @@
+{
+  "name": "wx-cli",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/wx-cli",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/wx-cli",
+    "/home/zhanxp/.codex/skills/wx-cli"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Downloaded custom skill for wx-cli workflows."
+}

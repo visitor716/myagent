@@ -1,0 +1,12 @@
+{
+  "name": "web-design-guidelines",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/web-design-guidelines",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/web-design-guidelines",
+    "/home/zhanxp/.codex/skills/web-design-guidelines"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "User-managed custom skill migrated from .cc-switch."
+}

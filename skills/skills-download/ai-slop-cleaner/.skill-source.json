@@ -1,0 +1,12 @@
+{
+  "name": "ai-slop-cleaner",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/ai-slop-cleaner",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/ai-slop-cleaner",
+    "/home/zhanxp/.codex/skills/ai-slop-cleaner"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Downloaded custom skill for cleaning AI slop from generated content."
+}

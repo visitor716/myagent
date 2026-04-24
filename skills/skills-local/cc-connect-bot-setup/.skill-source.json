@@ -1,0 +1,12 @@
+{
+  "name": "cc-connect-bot-setup",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/cc-connect-bot-setup",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/cc-connect-bot-setup",
+    "/home/zhanxp/.codex/skills/cc-connect-bot-setup"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Captures cc-connect Telegram bridge permission-mode and WSL startup workflows."
+}

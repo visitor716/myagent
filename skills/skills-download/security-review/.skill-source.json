@@ -1,0 +1,12 @@
+{
+  "name": "security-review",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/security-review",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/security-review",
+    "/home/zhanxp/.codex/skills/security-review"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Downloaded custom skill for security review workflows."
+}

@@ -1,0 +1,12 @@
+{
+  "name": "find-docs",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/find-docs",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/find-docs",
+    "/home/zhanxp/.codex/skills/find-docs"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Downloaded custom skill for locating project documentation."
+}

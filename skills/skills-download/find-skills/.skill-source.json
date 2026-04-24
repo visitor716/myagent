@@ -1,0 +1,12 @@
+{
+  "name": "find-skills",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-download/find-skills",
+  "runtime_targets": [
+    "/home/zhanxp/.claude/skills/find-skills",
+    "/home/zhanxp/.codex/skills/find-skills"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Downloaded custom skill for discovering available skills."
+}
