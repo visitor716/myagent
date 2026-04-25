@@ -81,6 +81,30 @@ python3 /home/zhanxp/projects/myagent/skills/cc-connect-bot-setup/scripts/set_cc
 
 Use `--dry-run` to preview the project summary without writing.
 
+## Latency Tuning
+
+When the user reports slow Telegram replies:
+
+1. Read recent logs first:
+   - `tail -n 260 ~/.cc-connect/logs/cc-connect.log`
+   - `tail -n 120 ~/.cc-connect/logs/cc-connect.nohup.log ~/.cc-connect/logs/cc-connect.err.log`
+2. Distinguish the bottleneck:
+   - `processing message` appears quickly, but `slow agent first event` appears later: model/agent startup or context/tool work is slow.
+   - `permission request` waits for minutes: the running session is still in a manual/plan mode; restart `cc-connect` after config changes and send `/new`.
+   - `getUpdates unexpected EOF` or `i/o timeout`: Telegram long polling/network path is unstable; expect 3s retry gaps and consider a stable proxy/network.
+3. Enable streaming preview for better mobile perceived latency:
+
+```toml
+[stream_preview]
+enabled = true
+interval_ms = 1200
+min_delta_chars = 25
+max_chars = 1800
+```
+
+4. Verify active child processes. If `claude --permission-mode plan` is still running after config says `bypassPermissions`, the service has not restarted and old sessions are still active.
+5. After restart, send `/new` in each Telegram bot to create fresh sessions under the new mode.
+
 ## Restart Guidance
 
 If systemd user services are available:
