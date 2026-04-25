@@ -58,8 +58,8 @@ class ReportTableTests(unittest.TestCase):
         self.assertEqual(len(spot_rows), 2)
         self.assertEqual(main_rows[0][:6], ['2026/4/16', '罗威组', '扬州晶澳F3', 'TCP', '9A', '运维'])
         self.assertEqual(main_rows[0][6], '自动化调试')
-        self.assertEqual(main_rows[1][6], '工艺')
-        self.assertEqual(main_rows[2][6], '工艺')
+        self.assertEqual(main_rows[1][6], '工艺调试')
+        self.assertEqual(main_rows[2][6], '工艺调试')
         self.assertEqual(main_rows[0][4], '9A')
         self.assertEqual(main_rows[0][7], '驱动器报警EE')
         self.assertEqual(spot_rows[0][0], 'F3')
@@ -90,7 +90,30 @@ class ReportTableTests(unittest.TestCase):
 
         main_rows = report_table.build_main_rows(parsed_entries, metadata)
 
-        self.assertEqual([row[6] for row in main_rows], ['工艺', '工艺', '工艺', '自动化调试'])
+        self.assertEqual([row[6] for row in main_rows], ['工艺调试', '工艺调试', '工艺调试', '自动化调试'])
+
+    def test_abnormal_and_review_keep_symptom_without_handling_result(self) -> None:
+        metadata = {
+            'date': '2026/4/25',
+            'name': '詹香平',
+            'group': report_table.DEFAULTS['group'],
+            'base': report_table.DEFAULTS['base'],
+            'device': report_table.DEFAULTS['device'],
+            'business': report_table.DEFAULTS['business'],
+            'category': report_table.DEFAULTS['category'],
+            'area': 'F3',
+        }
+        parsed_entries = [
+            report_table.parse_entry('3B毛刷气缸接头缩回异常，更换接头并固定接头后恢复生产'),
+            report_table.parse_entry('2A生产操作机台，误锁定上位机软件，重启工控机后恢复正常'),
+        ]
+
+        main_rows = report_table.build_main_rows(parsed_entries, metadata)
+
+        self.assertEqual(main_rows[0][7], '毛刷气缸接头缩回异常')
+        self.assertEqual(main_rows[0][9], '毛刷气缸接头缩回异常')
+        self.assertEqual(main_rows[1][7], '误锁定上位机软件')
+        self.assertEqual(main_rows[1][9], '误锁定上位机软件')
 
     def test_explicit_category_overrides_inferred_category(self) -> None:
         entry = report_table.parse_entry('1A1光斑破洞，调整DOE后恢复')

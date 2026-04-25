@@ -41,7 +41,7 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 ## Defaults
 
 - 主表列 `日期`、`组别`、`客户基地`、`设备类型`、`业务`: 默认自动填入 `日报日期`、`罗威组`、`扬州晶澳F3`、`TCP`、`运维`
-- `异常分类`: 默认自动判断；`光斑`、`PT值`/`PT 值`、`精度`、能量偏移类写 `工艺`，其他写 `自动化调试`
+- `异常分类`: 默认自动判断；`光斑`、`PT值`/`PT 值`、`精度`、能量偏移类写 `工艺调试`，其他写 `自动化调试`
 - `区域`: `F3`
 - `记录人员`: `詹香平`
 - `输出目录`: `D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化`
@@ -130,7 +130,9 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 ## Parsing Rules
 
 - Main table is always generated.
-- 主表 `异常分类` 默认按异常描述自动判断：光斑、PT值、精度、能量偏移类为 `工艺`，其他为 `自动化调试`；只有用户明确指定 `--category` 时才覆盖自动分类。
+- 主表 `异常分类` 默认按异常描述自动判断：光斑、PT值、精度、能量偏移类为 `工艺调试`，其他为 `自动化调试`；只有用户明确指定 `--category` 时才覆盖自动分类。
+- 主表 `异常现象` 只写异常/现象本身，不写处理动作或处理结果（例如不要包含“重启后恢复正常”“更换后恢复生产”“光斑OK”等）。
+- 主表 `问题复盘` 保持简短，只简要复述异常现象，默认与精简后的 `异常现象` 一致。
 - 光斑调试表 is generated when an entry contains `光斑` or `能量偏`.
 - `机台编号` uses the full machine token, such as `9B2` or `4A1`.
 - Machine ranges like `1-14同步检查所有机台...` may be parsed as `待确认`; after running the script, verify the preview and the appended `每天日报.md` rows. If a range was misparsed, manually correct `机台编号` to the range (for example `1-14`) and use clearer `异常现象`/`问题复盘` text such as `CT稳定性同步检查`.

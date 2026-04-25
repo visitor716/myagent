@@ -65,14 +65,17 @@ NUMBERED_SPLIT_RE = re.compile(r'\s*\d+[、.．)]\s*')
 SECONDARY_ENTRY_SPLIT_RE = re.compile(r'(?<=[。；;])\s*(?=\d+[A-Za-z](?:\d+)?)')
 WINDOWS_DRIVE_RE = re.compile(r'^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$')
 PROCESS_VERB_RE = re.compile(
-    r'(调整|更换|清洗|擦拭|断电|插拔|复位|优化|移动|校正|校准|补偿|检查|清理|处理|交付|重调|重新|联系|恢复)'
+    r'(调整|更换|清洗|擦拭|断电|插拔|复位|优化|移动|校正|校准|补偿|检查|清理|处理|交付|重调|重新|重启|联系|恢复)'
 )
+RESULT_MARKER_RE = re.compile(r'(恢复生产|恢复正常|复位正常|光斑(?:形貌)?OK|光斑OK|正常生产|OK)')
 
 ABNORMAL_PATTERNS = [
     re.compile(r'驱动器报警[0-9A-Za-z-]+'),
     re.compile(r'MES软件\s*无法打开'),
     re.compile(r'PT\s*值极差大'),
     re.compile(r'精度异常'),
+    re.compile(r'误锁定上位机软件'),
+    re.compile(r'[^，。；;,.]{0,8}?气缸接头缩回异常'),
     re.compile(r'光斑能量偏移'),
     re.compile(r'光斑缺失'),
     re.compile(r'光斑[^，。；;,.]{0,18}?破洞'),
@@ -83,7 +86,7 @@ ABNORMAL_PATTERNS = [
 ]
 
 AUTO_CATEGORY = 'auto'
-PROCESS_CATEGORY = '工艺'
+PROCESS_CATEGORY = '工艺调试'
 AUTOMATION_CATEGORY = '自动化调试'
 
 
@@ -177,22 +180,39 @@ def extract_machine(text: str) -> tuple[str, str]:
     return machine, remainder
 
 
+def strip_handling_result(text: str) -> str:
+    """Keep only the symptom/phenomenon portion, not the handling or result."""
+    if not text:
+        return ''
+
+    result_match = RESULT_MARKER_RE.search(text)
+    if result_match and result_match.start() > 0:
+        text = text[: result_match.start()]
+
+    verb_match = PROCESS_VERB_RE.search(text)
+    if verb_match and verb_match.start() > 0:
+        text = text[: verb_match.start()]
+
+    return text.strip(' ，,。；;')
+
+
 def extract_abnormal(process_text: str) -> str:
     if not process_text:
         return '待确认'
+
+    phenomenon_text = strip_handling_result(process_text)
+
+    for pattern in ABNORMAL_PATTERNS:
+        match = pattern.search(phenomenon_text)
+        if match:
+            return match.group(0).strip(' ，,。；;')
 
     for pattern in ABNORMAL_PATTERNS:
         match = pattern.search(process_text)
         if match:
             return match.group(0).strip(' ，,。；;')
 
-    verb_match = PROCESS_VERB_RE.search(process_text)
-    if verb_match and verb_match.start() > 0:
-        candidate = process_text[: verb_match.start()].strip(' ，,。；;')
-        if candidate:
-            return candidate
-
-    first_clause = re.split(r'[，,。；;]', process_text, maxsplit=1)[0].strip(' ，,。；;')
+    first_clause = re.split(r'[，,。；;]', phenomenon_text or process_text, maxsplit=1)[0].strip(' ，,。；;')
     return first_clause or '待确认'
 
 
