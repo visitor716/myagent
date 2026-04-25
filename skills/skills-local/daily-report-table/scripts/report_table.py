@@ -15,14 +15,14 @@ from pathlib import Path
 from typing import Iterable
 
 DEFAULTS = {
-    'group': '',
-    'base': '',
-    'device': '',
-    'business': '',
-    'category': '工艺调试',
+    'group': '罗威组',
+    'base': '扬州晶澳F3',
+    'device': 'TCP',
+    'business': '运维',
+    'category': 'auto',
     'area': 'F3',
     'name': '詹香平',
-    'output_dir': r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3',
+    'output_dir': r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化',
     'main_note': '每天日报.md',
     'spot_note': '光斑调试记录.md',
     'wecom_html_file': '企业微信日报-{date}.html',
@@ -71,7 +71,7 @@ PROCESS_VERB_RE = re.compile(
 ABNORMAL_PATTERNS = [
     re.compile(r'驱动器报警[0-9A-Za-z-]+'),
     re.compile(r'MES软件\s*无法打开'),
-    re.compile(r'PT值极差大'),
+    re.compile(r'PT\s*值极差大'),
     re.compile(r'精度异常'),
     re.compile(r'光斑能量偏移'),
     re.compile(r'光斑缺失'),
@@ -81,6 +81,10 @@ ABNORMAL_PATTERNS = [
     re.compile(r'能量[^，。；;,.]{0,12}?偏[^，。；;,.]{0,8}'),
     re.compile(r'能量偏移'),
 ]
+
+AUTO_CATEGORY = 'auto'
+PROCESS_CATEGORY = '工艺'
+AUTOMATION_CATEGORY = '自动化调试'
 
 
 @dataclass
@@ -215,6 +219,21 @@ def normalize_spot_issue(abnormal: str, process_text: str) -> str:
     return '光斑异常'
 
 
+def infer_abnormal_category(entry: ParsedEntry) -> str:
+    combined = re.sub(r'\s+', '', f'{entry.abnormal} {entry.process}').upper()
+    if '光斑' in combined or 'PT值' in combined or '精度' in combined:
+        return PROCESS_CATEGORY
+    if '能量' in combined and ('偏' in combined or '聚集' in combined):
+        return PROCESS_CATEGORY
+    return AUTOMATION_CATEGORY
+
+
+def resolve_abnormal_category(entry: ParsedEntry, requested_category: str) -> str:
+    if requested_category and requested_category != AUTO_CATEGORY:
+        return requested_category
+    return infer_abnormal_category(entry)
+
+
 def infer_channel(machine_full: str, text: str) -> str:
     compact_text = text.replace(' ', '').upper()
     if any(token in compact_text for token in ('AC和BD', 'BD和AC', 'AC&BD', 'BD&AC', 'AC/BD', 'BD/AC', 'AC及BD', 'BD及AC')):
@@ -301,13 +320,13 @@ def build_main_rows(entries: Iterable[ParsedEntry], metadata: dict[str, str]) ->
     for entry in entries:
         rows.append(
             [
-                '',
+                format_main_date(metadata['date']),
                 metadata['group'],
                 metadata['base'],
                 metadata['device'],
                 entry.machine_full,
                 metadata['business'],
-                metadata['category'],
+                resolve_abnormal_category(entry, metadata['category']),
                 entry.abnormal,
                 entry.process,
                 entry.abnormal,
@@ -912,11 +931,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Generate fixed daily report tables.')
     parser.add_argument('--date', default=today_string(), help='日报日期，默认今天。')
     parser.add_argument('--name', default=DEFAULTS['name'], help='记录人员，默认詹香平。')
-    parser.add_argument('--group', default=DEFAULTS['group'], help='组别，主表默认留空。')
-    parser.add_argument('--base', default=DEFAULTS['base'], help='客户基地，主表默认留空。')
-    parser.add_argument('--device', default=DEFAULTS['device'], help='设备类型，主表默认留空。')
-    parser.add_argument('--business', default=DEFAULTS['business'], help='业务，主表默认留空。')
-    parser.add_argument('--category', default=DEFAULTS['category'], help='异常分类，默认工艺调试。')
+    parser.add_argument('--group', default=DEFAULTS['group'], help='组别，默认罗威组。')
+    parser.add_argument('--base', default=DEFAULTS['base'], help='客户基地，默认扬州晶澳F3。')
+    parser.add_argument('--device', default=DEFAULTS['device'], help='设备类型，默认TCP。')
+    parser.add_argument('--business', default=DEFAULTS['business'], help='业务，默认运维。')
+    parser.add_argument('--category', default=DEFAULTS['category'], help='异常分类，默认自动判断；传入具体值可手动覆盖。')
     parser.add_argument('--area', default=DEFAULTS['area'], help='光斑调试表区域，默认F3。')
     parser.add_argument('--output-dir', default=DEFAULTS['output_dir'], help='输出目录。')
     parser.add_argument('--main-note', default=DEFAULTS['main_note'], help='日报笔记文件名。')

@@ -42,11 +42,11 @@ class ReportTableTests(unittest.TestCase):
         metadata = {
             'date': '2026/4/16',
             'name': '詹香平',
-            'group': '',
-            'base': '',
-            'device': '',
-            'business': '',
-            'category': '工艺调试',
+            'group': report_table.DEFAULTS['group'],
+            'base': report_table.DEFAULTS['base'],
+            'device': report_table.DEFAULTS['device'],
+            'business': report_table.DEFAULTS['business'],
+            'category': report_table.DEFAULTS['category'],
             'area': 'F3',
         }
 
@@ -56,6 +56,10 @@ class ReportTableTests(unittest.TestCase):
 
         self.assertEqual(len(main_rows), 3)
         self.assertEqual(len(spot_rows), 2)
+        self.assertEqual(main_rows[0][:6], ['2026/4/16', '罗威组', '扬州晶澳F3', 'TCP', '9A', '运维'])
+        self.assertEqual(main_rows[0][6], '自动化调试')
+        self.assertEqual(main_rows[1][6], '工艺')
+        self.assertEqual(main_rows[2][6], '工艺')
         self.assertEqual(main_rows[0][4], '9A')
         self.assertEqual(main_rows[0][7], '驱动器报警EE')
         self.assertEqual(spot_rows[0][0], 'F3')
@@ -66,12 +70,54 @@ class ReportTableTests(unittest.TestCase):
         self.assertEqual(spot_rows[1][3], 'BD')
         self.assertEqual(spot_rows[1][4], '光斑破洞')
 
+    def test_abnormal_category_is_inferred_from_process_keywords(self) -> None:
+        metadata = {
+            'date': '2026/4/21',
+            'name': '詹香平',
+            'group': report_table.DEFAULTS['group'],
+            'base': report_table.DEFAULTS['base'],
+            'device': report_table.DEFAULTS['device'],
+            'business': report_table.DEFAULTS['business'],
+            'category': report_table.DEFAULTS['category'],
+            'area': 'F3',
+        }
+        parsed_entries = [
+            report_table.parse_entry('1A1光斑破洞，调整DOE后恢复'),
+            report_table.parse_entry('2A PT 值极差大，校准后恢复'),
+            report_table.parse_entry('3B精度异常，重新标定后恢复'),
+            report_table.parse_entry('4A出料一驱动器报警EE，重新插拔编码器后恢复'),
+        ]
+
+        main_rows = report_table.build_main_rows(parsed_entries, metadata)
+
+        self.assertEqual([row[6] for row in main_rows], ['工艺', '工艺', '工艺', '自动化调试'])
+
+    def test_explicit_category_overrides_inferred_category(self) -> None:
+        entry = report_table.parse_entry('1A1光斑破洞，调整DOE后恢复')
+        metadata = {
+            'date': '2026/4/21',
+            'name': '詹香平',
+            'group': '',
+            'base': '',
+            'device': '',
+            'business': '',
+            'category': '现场确认',
+            'area': 'F3',
+        }
+
+        main_rows = report_table.build_main_rows([entry], metadata)
+
+        self.assertEqual(main_rows[0][6], '现场确认')
+
     def test_resolve_path_accepts_windows_path(self) -> None:
-        resolved = report_table.resolve_path(r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3')
-        self.assertEqual(str(resolved), '/mnt/d/Obsidian/MyNote/03.工作/扬州晶澳F3')
+        default_output_dir = r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化'
+
+        self.assertEqual(report_table.DEFAULTS['output_dir'], default_output_dir)
+        resolved = report_table.resolve_path(default_output_dir)
+        self.assertEqual(str(resolved), '/mnt/d/Obsidian/MyNote/03.工作/扬州晶澳F3日报表格自动化')
         self.assertEqual(
-            report_table.display_path('/mnt/d/Obsidian/MyNote/03.工作/扬州晶澳F3/企业微信日报.html'),
-            r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3\企业微信日报.html',
+            report_table.display_path('/mnt/d/Obsidian/MyNote/03.工作/扬州晶澳F3日报表格自动化/企业微信日报.html'),
+            r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化\企业微信日报.html',
         )
 
     def test_filename_template_uses_normalized_date(self) -> None:

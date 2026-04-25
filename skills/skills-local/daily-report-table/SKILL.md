@@ -40,11 +40,11 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 
 ## Defaults
 
-- 主表列 `日期`、`组别`、`客户基地`、`设备类型`、`业务`: 默认留空占位
-- `异常分类`: `工艺调试`
+- 主表列 `日期`、`组别`、`客户基地`、`设备类型`、`业务`: 默认自动填入 `日报日期`、`罗威组`、`扬州晶澳F3`、`TCP`、`运维`
+- `异常分类`: 默认自动判断；`光斑`、`PT值`/`PT 值`、`精度`、能量偏移类写 `工艺`，其他写 `自动化调试`
 - `区域`: `F3`
 - `记录人员`: `詹香平`
-- `输出目录`: `D:\Obsidian\MyNote\03.工作\扬州晶澳F3`
+- `输出目录`: `D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化`
 - `日报文件`: `每天日报.md`
 - `光斑文件`: `光斑调试记录.md`
 - `企业微信文件`: `企业微信日报-{date}.html`
@@ -130,8 +130,10 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 ## Parsing Rules
 
 - Main table is always generated.
+- 主表 `异常分类` 默认按异常描述自动判断：光斑、PT值、精度、能量偏移类为 `工艺`，其他为 `自动化调试`；只有用户明确指定 `--category` 时才覆盖自动分类。
 - 光斑调试表 is generated when an entry contains `光斑` or `能量偏`.
 - `机台编号` uses the full machine token, such as `9B2` or `4A1`.
+- Machine ranges like `1-14同步检查所有机台...` may be parsed as `待确认`; after running the script, verify the preview and the appended `每天日报.md` rows. If a range was misparsed, manually correct `机台编号` to the range (for example `1-14`) and use clearer `异常现象`/`问题复盘` text such as `CT稳定性同步检查`.
 - 光斑调试表的 `机台` uses the base machine, such as `9B2 -> 9B`.
 - 通道 detection priority:
   - explicit `AC和BD` / `AC&BD`
@@ -148,6 +150,7 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
   - 企业微信样式调整: `--format wecom-html --write-mode html --preview summary`
   - 企业微信图表列复制: `--chart-copy --write-mode none --preview summary`
 - Default format is Markdown.
+- Default writes should stay in `D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化`; use `--output-dir` only when the user explicitly asks for a different storage location.
 - Use `--format tsv` when the user wants easier spreadsheet pasting.
 - Use `--format wecom-html` when the user wants enterprise WeChat-friendly table layout. This saves a styled HTML file named like `企业微信日报-2026-04-18.html`, with `F3` rendered as a blue selected tag.
 - `--output-dir` supports both Windows paths like `D:\...` and WSL paths like `/mnt/d/...`.
