@@ -5,12 +5,14 @@ SCRIPT_NAME="$(basename "$0")"
 MANAGED_MARKER="Managed by sync-shared-skills"
 
 SOURCE_SIDE="auto"
+TARGET_SIDE="auto"
 DRY_RUN=0
 VERBOSE=0
 SYNC_CONFIGS=0
 
 CODEX_ROOT="${CODEX_HOME:-$HOME/.codex}/skills"
 CLAUDE_ROOT="${CLAUDE_SKILLS_HOME:-$HOME/.claude}/skills"
+HERMES_ROOT="${HERMES_SKILLS_HOME:-$HOME/.hermes/skills}/myagent"
 
 MYAGENT_ROOT="/home/zhanxp/projects/myagent"
 CLAUDE_SETTINGS_RUNTIME="$HOME/.claude/settings.json"
@@ -27,12 +29,14 @@ CONFLICTS=0
 usage() {
   cat <<'EOF'
 Usage:
-  sync_shared_skills.sh --source <codex|claude> [--dry-run] [--verbose]
+  sync_shared_skills.sh --source <codex|claude> [--target <codex|claude|hermes>] [--dry-run] [--verbose]
   sync_shared_skills.sh --configs <backup|restore|validate> [--dry-run]
 
 Commands:
   Skills sync (default):
     --source   Required. Select which side is the source.
+    --target   Optional. Defaults to claude for codex source and codex for claude source.
+               Use hermes to install shared skills under ~/.hermes/skills/myagent.
     --dry-run  Print planned changes without modifying files.
     --verbose  Print per-skill decisions.
 
@@ -44,6 +48,9 @@ Commands:
 Examples:
   # Sync skills from Codex to Claude Code
   sync_shared_skills.sh --source codex --dry-run --verbose
+
+  # Sync skills from Codex to Hermes
+  sync_shared_skills.sh --source codex --target hermes --dry-run --verbose
 
   # Backup runtime configs to myagent
   sync_shared_skills.sh --configs backup
@@ -419,6 +426,11 @@ while [[ $# -gt 0 ]]; do
       SOURCE_SIDE="$2"
       shift 2
       ;;
+    --target)
+      [[ $# -ge 2 ]] || die "--target requires a value"
+      TARGET_SIDE="$2"
+      shift 2
+      ;;
     --configs)
       SYNC_CONFIGS=1
       if [[ $# -ge 2 && ! "$2" =~ ^-- ]]; then
@@ -458,22 +470,45 @@ fi
 case "$SOURCE_SIDE" in
   codex)
     SOURCE_ROOT="$CODEX_ROOT"
-    TARGET_ROOT="$CLAUDE_ROOT"
+    if [[ "$TARGET_SIDE" == "auto" ]]; then
+      TARGET_SIDE="claude"
+    fi
     ;;
   claude)
     SOURCE_ROOT="$CLAUDE_ROOT"
-    TARGET_ROOT="$CODEX_ROOT"
+    if [[ "$TARGET_SIDE" == "auto" ]]; then
+      TARGET_SIDE="codex"
+    fi
     ;;
   *)
     die "--source must be codex or claude"
     ;;
 esac
 
+case "$TARGET_SIDE" in
+  codex)
+    TARGET_ROOT="$CODEX_ROOT"
+    ;;
+  claude)
+    TARGET_ROOT="$CLAUDE_ROOT"
+    ;;
+  hermes)
+    TARGET_ROOT="$HERMES_ROOT"
+    ;;
+  *)
+    die "--target must be codex, claude, or hermes"
+    ;;
+esac
+
+if [[ "$SOURCE_SIDE" == "$TARGET_SIDE" ]]; then
+  die "--source and --target cannot be the same side"
+fi
+
 [[ -d "$SOURCE_ROOT" ]] || die "Source root does not exist: $SOURCE_ROOT"
 ensure_dir "$TARGET_ROOT"
 
-log "Source: $SOURCE_ROOT"
-log "Target: $TARGET_ROOT"
+log "Source ($SOURCE_SIDE): $SOURCE_ROOT"
+log "Target ($TARGET_SIDE): $TARGET_ROOT"
 
 if [[ "$SOURCE_SIDE" == "codex" ]]; then
   sync_from_codex "$SOURCE_ROOT" "$TARGET_ROOT"
@@ -482,3 +517,7 @@ else
 fi
 
 log "Summary: created=$CREATED updated=$UPDATED unchanged=$UNCHANGED skipped=$SKIPPED conflicts=$CONFLICTS"
+
+if [[ "$TARGET_SIDE" == "hermes" ]]; then
+  log "Hermes note: restart Hermes or clear its skill prompt cache if an existing session does not see new skills."
+fi

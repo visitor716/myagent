@@ -1,16 +1,17 @@
 ---
 name: sync-shared-skills
-description: Sync common user skills between Codex and Claude Code. Use when the user says "同步skill", "同步技能", "sync skill", "sync skills", or asks to share/mirror common skills between ~/.codex/skills and ~/.claude/skills. Sync from the current side to the other side while skipping runtime-only, system, and unmanaged conflicting skills.
+description: Sync common user skills between Codex, Claude Code, and Hermes. Use when the user says "同步skill", "同步技能", "sync skill", "sync skills", or asks to share/mirror common skills between ~/.codex/skills, ~/.claude/skills, and ~/.hermes/skills. Sync from the selected source side to the target while skipping runtime-only, system, and unmanaged conflicting skills.
 ---
 
 # Sync Shared Skills
 
-Sync common, cross-harness user skills between `~/.codex/skills` and `~/.claude/skills` without overwriting unmanaged conflicts.
+Sync common, cross-harness user skills between `~/.codex/skills`, `~/.claude/skills`, and Hermes' `~/.hermes/skills/myagent` target without overwriting unmanaged conflicts.
 
 ## When to Use
 
 - The user says `同步skill`, `同步技能`, `sync skill`, `sync skills`, `share skills`, or asks Codex and Claude Code to share the same user skills.
 - You need to make a newly added user skill available in the opposite harness.
+- You need Hermes to see a myagent-managed skill such as `daily-report-table`.
 - You need to refresh Codex wrappers for Claude flat `*.md` skills.
 - The user says `同步配置`, `sync configs`, `备份配置`, `恢复配置`, or asks to sync Claude Code / Codex settings between runtime and myagent.
 
@@ -28,6 +29,12 @@ Sync common, cross-harness user skills between `~/.codex/skills` and `~/.claude/
 bash scripts/sync_shared_skills.sh --source codex
 ```
 
+- To make Codex skills visible to Hermes, sync from `~/.codex/skills` into Hermes' myagent skill bucket:
+
+```bash
+bash scripts/sync_shared_skills.sh --source codex --target hermes
+```
+
 - In Claude Code sessions, sync from `~/.claude/skills` to `~/.codex/skills`:
 
 ```bash
@@ -39,6 +46,7 @@ bash scripts/sync_shared_skills.sh --source claude
 ```bash
 bash scripts/sync_shared_skills.sh --source codex --dry-run --verbose
 bash scripts/sync_shared_skills.sh --source claude --dry-run --verbose
+bash scripts/sync_shared_skills.sh --source codex --target hermes --dry-run --verbose
 ```
 
 ## Workflow
@@ -46,6 +54,7 @@ bash scripts/sync_shared_skills.sh --source claude --dry-run --verbose
 1. Resolve the source and target roots:
    - Codex user skills: `${CODEX_HOME:-~/.codex}/skills`
    - Claude user skills: `~/.claude/skills`
+   - Hermes myagent user skills: `~/.hermes/skills/myagent`
 2. Collect candidate skills from the source side:
    - directory skills: `<name>/SKILL.md`
    - Claude flat skills: `<name>.md`
@@ -53,6 +62,7 @@ bash scripts/sync_shared_skills.sh --source claude --dry-run --verbose
 4. Sync safely:
    - directory skill -> create a symlink in the target root when no unmanaged conflict exists;
    - Claude flat skill -> create or update a managed Codex wrapper directory `<name>/SKILL.md`.
+   - Hermes target -> create symlinks under `~/.hermes/skills/myagent/<name>` so Hermes' normal local skill scanner can discover them.
 5. Never overwrite or delete unmanaged targets. Report conflicts instead.
 6. Print a concise summary of created, updated, unchanged, skipped, and conflicting entries.
 
@@ -100,6 +110,7 @@ Validates JSON/TOML format of the stored config templates.
 # Skills sync dry-run
 bash scripts/sync_shared_skills.sh --source codex --dry-run --verbose
 bash scripts/sync_shared_skills.sh --source claude --dry-run --verbose
+bash scripts/sync_shared_skills.sh --source codex --target hermes --dry-run --verbose
 
 # Configs sync dry-run
 bash scripts/sync_shared_skills.sh --configs backup --dry-run
