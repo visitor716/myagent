@@ -14,6 +14,7 @@ configs/
 │   └── .env.example            # 环境变量示例
 └── codex/
     ├── config.toml             # Codex 配置模板
+    ├── bash_aliases.full-auto.sh # Codex 全自动 bash 入口模板
     └── .env.example            # 环境变量示例
 ```
 
@@ -34,7 +35,22 @@ bash configs/sync.sh restore
 这会将 `configs/claude-code/settings.json` 复制到 `~/.claude/settings.json`，
 将 `configs/codex/config.toml` 复制到 `~/.codex/config.toml`。
 
-### 3. 备份运行时配置到 myagent
+### 3. 安装 Codex 全自动默认入口
+
+```bash
+bash configs/sync.sh codex-full-auto
+```
+
+这会幂等更新：
+
+- `configs/codex/config.toml` 和 `~/.codex/config.toml`
+- `~/.bash_aliases` 中 marker 管理的 Codex 包装器块
+
+安装后新开一个 WSL/Windows Terminal bash 窗口，`code x` 和 `codex` 默认进入
+`--dangerously-bypass-approvals-and-sandbox` 模式；`cfa` 保留为较安全的 `--full-auto`
+入口。
+
+### 4. 备份运行时配置到 myagent
 
 ```bash
 bash configs/sync.sh backup
@@ -61,6 +77,18 @@ bash configs/sync.sh backup
 ### Codex (`configs/codex/config.toml`)
 
 Codex 配置通常不包含敏感 token，但如有 `auth_token` 等字段也需替换。
+
+本仓库的 Codex 模板默认包含：
+
+```toml
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[notice]
+hide_full_access_warning = true
+```
+
+这对应无审批、无沙箱的本地全自动入口，只应在受信任机器上恢复或安装。
 
 ## 环境变量
 

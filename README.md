@@ -20,8 +20,18 @@ This repository is the source of truth for user-managed custom skills.
 
 - **`configs/claude-code/settings.json`** — Claude Code 配置模板（已脱敏）
 - **`configs/codex/config.toml`** — Codex 配置模板
-- **`configs/sync.sh`** — 配置同步脚本（支持 backup / restore / validate）
+- **`configs/codex/bash_aliases.full-auto.sh`** — Codex 全自动 bash 入口模板
+- **`configs/sync.sh`** — 配置同步脚本（支持 backup / restore / codex-full-auto / validate）
 
 详见 [configs/README.md](configs/README.md)。
+
+常用复用命令：
+
+```bash
+bash configs/sync.sh codex-full-auto
+```
+
+该命令会把 `code x` / `codex` 默认入口安装为 Codex 无审批、无沙箱模式，并保留
+`cfa` 作为较安全的 `--full-auto` 入口。
 
 See [docs/skill-migration-plan.md](/home/zhanxp/projects/myagent/docs/skill-migration-plan.md) for the full migration, linking, uninstall-safety, and recovery process.
