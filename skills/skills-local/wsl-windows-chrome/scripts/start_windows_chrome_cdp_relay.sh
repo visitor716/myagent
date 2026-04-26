@@ -25,7 +25,7 @@ if [[ "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-if ! wsl_windows_chrome_has_cmd powershell.exe; then
+if ! wsl_windows_chrome_has_powershell; then
   echo "powershell.exe not found; this helper requires WSL with Windows interop enabled." >&2
   exit 1
 fi
@@ -43,7 +43,7 @@ RELAY_KEY="$(wsl_windows_chrome_relay_key "$BIND_HOST" "$LISTEN_PORT" "$TARGET_P
 
 cat <<'INFO'
 Starting a Windows-local TCP relay so WSL can reach the automation browser CDP port.
-This helper writes a small Node relay into %USERPROFILE%\.codex\wsl-windows-chrome and launches it hidden.
+This helper writes a small PowerShell relay into %USERPROFILE%\.codex\wsl-windows-chrome and launches it hidden.
 INFO
 
 PS_SCRIPT=$(cat <<'PS1'
@@ -53,43 +53,93 @@ $listenPort = __LISTEN_PORT__
 $targetPort = __TARGET_PORT__
 $bindHost = '__BIND_HOST__'
 $relayRoot = Join-Path $env:USERPROFILE '.codex\wsl-windows-chrome'
-$relayPath = Join-Path $relayRoot 'chrome_cdp_proxy___RELAY_KEY__.js'
-$js = @"
-const net = require('net');
-const listenPort = Number(process.argv[2]);
-const targetPort = Number(process.argv[3]);
-const bindHost = process.argv[4];
+$relayPath = Join-Path $relayRoot 'chrome_cdp_proxy___RELAY_KEY__.ps1'
+$relayScript = @'
+param(
+  [int]$ListenPort,
+  [int]$TargetPort,
+  [string]$BindHost
+)
 
-const server = net.createServer((client) => {
-  const target = net.connect({ host: '127.0.0.1', port: targetPort }, () => {
-    client.pipe(target);
-    target.pipe(client);
-  });
-  target.on('error', () => client.destroy());
-  client.on('error', () => target.destroy());
-});
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
-server.on('error', (error) => {
-  console.error(error.message || String(error));
-  process.exit(1);
-});
+Add-Type -TypeDefinition @"
+using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading.Tasks;
 
-server.listen(listenPort, bindHost);
+public static class WslWindowsChromeTcpRelay
+{
+    public static void Run(int listenPort, int targetPort, string bindHost)
+    {
+        var listener = new TcpListener(IPAddress.Parse(bindHost), listenPort);
+        listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        listener.Start();
+
+        while (true)
+        {
+            var client = listener.AcceptTcpClient();
+            Task.Run(() => HandleClient(client, targetPort));
+        }
+    }
+
+    private static void HandleClient(TcpClient client, int targetPort)
+    {
+        TcpClient target = null;
+        try
+        {
+            target = new TcpClient("127.0.0.1", targetPort);
+            using (client)
+            using (target)
+            {
+                var clientStream = client.GetStream();
+                var targetStream = target.GetStream();
+                var clientToTarget = clientStream.CopyToAsync(targetStream);
+                var targetToClient = targetStream.CopyToAsync(clientStream);
+                Task.WaitAny(clientToTarget, targetToClient);
+            }
+        }
+        catch
+        {
+            try { if (target != null) target.Dispose(); } catch {}
+            try { if (client != null) client.Dispose(); } catch {}
+        }
+    }
+}
 "@
 
+[WslWindowsChromeTcpRelay]::Run($ListenPort, $TargetPort, $BindHost)
+'@
+
 New-Item -ItemType Directory -Force -Path $relayRoot | Out-Null
-Set-Content -Path $relayPath -Value $js -Encoding UTF8
+Set-Content -Path $relayPath -Value $relayScript -Encoding UTF8
 
 Get-CimInstance Win32_Process |
   Where-Object {
-    $_.Name -match '^node(.exe)?$' -and
+    $_.Name -match '^(node|powershell|pwsh)(.exe)?$' -and
     $_.CommandLine -like "*$relayRoot*" -and
     $_.CommandLine -like "* $listenPort *" -and
     $_.CommandLine -like "* $bindHost*"
   } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
-Start-Process -WindowStyle Hidden -FilePath 'node' -ArgumentList @($relayPath, $listenPort, $targetPort, $bindHost) | Out-Null
+$powershellExe = Join-Path $PSHOME 'powershell.exe'
+if (-not (Test-Path $powershellExe)) {
+  $powershellExe = 'powershell.exe'
+}
+
+Start-Process -WindowStyle Hidden -FilePath $powershellExe -ArgumentList @(
+  '-NoProfile',
+  '-ExecutionPolicy',
+  'Bypass',
+  '-File',
+  $relayPath,
+  $listenPort,
+  $targetPort,
+  $bindHost
+) | Out-Null
 PS1
 )
 
@@ -98,7 +148,7 @@ PS_SCRIPT="${PS_SCRIPT//__TARGET_PORT__/$TARGET_PORT}"
 PS_SCRIPT="${PS_SCRIPT//__BIND_HOST__/$(wsl_windows_chrome_escape_ps_single_quote "$BIND_HOST")}"
 PS_SCRIPT="${PS_SCRIPT//__RELAY_KEY__/$RELAY_KEY}"
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$PS_SCRIPT" >/dev/null
+wsl_windows_chrome_powershell -Command "$PS_SCRIPT" >/dev/null
 
 if ! wsl_windows_chrome_wait_for_endpoint "$BIND_HOST" "$LISTEN_PORT" 5 0.2; then
   echo "Relay did not become reachable on $BIND_HOST:$LISTEN_PORT." >&2

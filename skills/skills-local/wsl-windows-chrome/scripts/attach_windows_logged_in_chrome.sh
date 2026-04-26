@@ -197,10 +197,11 @@ attach_endpoint() {
 
   log "Trying playwright-cli attach via $endpoint"
   log_file="$(mktemp)"
-  playwright-cli attach --cdp="$endpoint" --session="$SESSION" >"$log_file" 2>&1 &
+  nohup playwright-cli attach --cdp="$endpoint" --session="$SESSION" >"$log_file" 2>&1 &
   attach_pid=$!
 
   if wsl_windows_chrome_wait_for_session "$SESSION" "$ATTACH_WAIT_SECONDS" "$ATTACH_POLL_SECONDS"; then
+    disown "$attach_pid" >/dev/null 2>&1 || true
     rm -f "$log_file"
     if [[ -n "$URL" ]]; then
       playwright-cli "-s=$SESSION" goto "$URL"
@@ -438,13 +439,13 @@ if [[ -n "$DISCOVERED_CDP_PORT" && "$DIRECT_REACHABLE" != true ]]; then
 fi
 
 if [[ -n "$RELAY_BIND_HOST" ]]; then
-  if ! wsl_windows_chrome_has_cmd powershell.exe; then
+  if ! wsl_windows_chrome_has_powershell; then
     fail_or_fallback 'Direct CDP attach failed, and powershell.exe is unavailable so relay-assisted attach cannot be started.'
     exit $?
   fi
 
   log "Direct attach is unavailable or failed; starting relay for port $RELAY_TARGET_CDP_PORT on $RELAY_BIND_HOST:$RELAY_PORT."
-  "$SCRIPT_DIR/start_windows_chrome_cdp_relay.sh" "$RELAY_PORT" "$RELAY_TARGET_CDP_PORT" "$RELAY_BIND_HOST" >/dev/null
+  bash "$SCRIPT_DIR/start_windows_chrome_cdp_relay.sh" "$RELAY_PORT" "$RELAY_TARGET_CDP_PORT" "$RELAY_BIND_HOST" >/dev/null
 
   if RELAY_WS_ENDPOINT="$(wsl_windows_chrome_http_ws_endpoint "$RELAY_BIND_HOST" "$RELAY_PORT" 2>/dev/null)"; then
     RELAY_REACHABLE=true

@@ -8,6 +8,38 @@ wsl_windows_chrome_has_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+wsl_windows_chrome_powershell_exe() {
+  local candidate
+
+  if command -v powershell.exe >/dev/null 2>&1; then
+    command -v powershell.exe
+    return 0
+  fi
+
+  for candidate in \
+    '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe' \
+    '/mnt/c/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe'
+  do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+wsl_windows_chrome_has_powershell() {
+  wsl_windows_chrome_powershell_exe >/dev/null 2>&1
+}
+
+wsl_windows_chrome_powershell() {
+  local powershell_exe
+
+  powershell_exe="$(wsl_windows_chrome_powershell_exe)" || return 127
+  "$powershell_exe" -NoProfile -ExecutionPolicy Bypass "$@"
+}
+
 wsl_windows_chrome_normalize_browser() {
   case "$1" in
     chrome | google-chrome | '')
@@ -124,7 +156,7 @@ PS1
   ps="${ps//__BROWSER__/$escaped_browser}"
   ps="${ps//__USER_DATA_DIR__/$escaped_dir}"
 
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ps" | tr -d '\r'
+  wsl_windows_chrome_powershell -Command "$ps" | tr -d '\r'
 }
 
 wsl_windows_chrome_read_process_port() {
@@ -181,7 +213,7 @@ PS1
   ps="${ps//__BROWSER__/$escaped_browser}"
   ps="${ps//__USER_DATA_DIR__/$escaped_dir}"
 
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ps" | tr -d '\r'
+  wsl_windows_chrome_powershell -Command "$ps" | tr -d '\r'
 }
 
 wsl_windows_chrome_read_profile_port() {
@@ -304,7 +336,7 @@ PS1
 )
 
   ps="${ps//__ENDPOINT__/$escaped_endpoint}"
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ps" >/dev/null 2>&1
+  wsl_windows_chrome_powershell -Command "$ps" >/dev/null 2>&1
 }
 
 wsl_windows_chrome_wait_for_endpoint() {

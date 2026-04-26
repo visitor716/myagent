@@ -34,9 +34,11 @@
       "mcp__chrome-devtools",
       "mcp__open-websearch"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "bypassPermissions"
   },
   "model": "KIMI 2.5",
   "hooks": {},
-  "outputStyle": "engineer-professional"
+  "outputStyle": "engineer-professional",
+  "skipDangerousModePermissionPrompt": true
 }

@@ -67,6 +67,8 @@ bash scripts/stop_windows_chrome_cdp_relay.sh
 - Use `scripts/print_windows_chrome_ws_endpoint.sh` when a tool needs the raw websocket endpoint instead of a high-level `playwright-cli attach` flow.
 - Assume the Windows automation browser is already running and logged in. This skill does not migrate cookies or profiles into WSL.
 - Treat fallback as a visible downgrade. State it before continuing with tasks that depend on an authenticated session.
+- `powershell.exe` is discovered from PATH first, then from standard `/mnt/c/Windows/...` locations so `[interop] appendWindowsPath=false` does not block attach.
+- Relay-assisted attach uses a Windows PowerShell TCP relay and does not require Windows Node.js.
 - The default `playwright-cli` session name is `wsl-windows-chrome`, not the generic `default`, to reduce collisions with unrelated browser work.
 - Relay binding defaults to the WSL gateway host instead of `0.0.0.0`. Override with `WSL_WINDOWS_CHROME_RELAY_BIND_HOST` only when you intentionally need a different bind address.
 - Override browser detection with `--browser edge` or `WSL_WINDOWS_CHROME_BROWSER=edge`.

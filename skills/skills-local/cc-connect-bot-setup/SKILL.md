@@ -1,6 +1,6 @@
 ---
 name: cc-connect-bot-setup
-description: Configure and diagnose cc-connect Telegram bot bridges, especially per-bot Claude Code and Codex permission modes, full-auto defaults, WSL/systemd startup fallback, config backups, and safe restarts. Use when the user mentions cc-connect, Telegram bot bridge permissions, full-auto/suggest/plan/yolo modes, or restarting cc-connect.
+description: Configure and diagnose cc-connect Telegram bot bridges and Claude Code permission defaults, especially per-bot Claude Code/Codex modes, global Claude Code startup bypassPermissions, full-auto defaults, WSL/systemd startup fallback, config backups, and safe restarts. Use when the user mentions cc-connect, Telegram bot bridge permissions, Claude/Cloud Code permission boundaries, bypassPermissions, full-auto/suggest/plan/yolo modes, or restarting cc-connect.
 ---
 
 # cc-connect Bot Setup
@@ -12,12 +12,16 @@ Canonical user config:
 - Config: `~/.cc-connect/config.toml`
 - Logs: `~/.cc-connect/logs/cc-connect.log`
 - Daemon metadata: `~/.cc-connect/daemon.json`
-- Project source of truth: `/home/zhanxp/projects/myagent/skills/cc-connect-bot-setup`
+- Skill source of truth: `/home/zhanxp/projects/myagent/skills/skills-local/cc-connect-bot-setup`
+- Claude Code user settings: `~/.claude/settings.json`
+- Claude Code template: `/home/zhanxp/projects/myagent/configs/claude-code/settings.json`
 
 ## Safety Rules
 
 - Treat Telegram tokens and API keys as secrets. Mask them in all user-facing output.
+- Do not print full Claude settings when they contain `env` tokens; show only relevant permission keys.
 - Back up `~/.cc-connect/config.toml` before modifying it.
+- Back up `~/.claude/settings.json` before modifying Claude Code defaults.
 - Do not restart `cc-connect` unless the user asked for restart. Config edits alone are enough when the user wants to restart later.
 - Prefer `full-auto` for Codex automation because it keeps the workspace sandbox. Use `yolo` only when the user explicitly asks for no approvals and no sandbox.
 - Keep `allow_from` or `admin_from` restricted to trusted user IDs for full-auto bots. Do not loosen access while changing permission mode.
@@ -75,11 +79,37 @@ When the user asks to make all `cc-connect` bots full-auto:
 Prefer the bundled script for repeatability:
 
 ```bash
-python3 /home/zhanxp/projects/myagent/skills/cc-connect-bot-setup/scripts/set_cc_connect_modes.py \
+python3 /home/zhanxp/projects/myagent/skills/skills-local/cc-connect-bot-setup/scripts/set_cc_connect_modes.py \
   --config ~/.cc-connect/config.toml
 ```
 
 Use `--dry-run` to preview the project summary without writing.
+
+## Claude Code Global Default Bypass
+
+When the user asks to make Claude/Cloud Code start in Bypass Permissions by default:
+
+1. Back up `~/.claude/settings.json` to `~/.claude/settings.json.bak.bypass-YYYYmmdd-HHMMSS`.
+2. In `~/.claude/settings.json`, preserve existing keys and set:
+
+```json
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "skipDangerousModePermissionPrompt": true
+}
+```
+
+3. Apply the same two settings to `/home/zhanxp/projects/myagent/configs/claude-code/settings.json` so config restore/sync does not regress the default.
+4. Validate both files with a JSON parser, for example:
+
+```bash
+node -e "for (const f of [process.env.HOME + '/.claude/settings.json', '/home/zhanxp/projects/myagent/configs/claude-code/settings.json']) JSON.parse(require('fs').readFileSync(f, 'utf8'))"
+```
+
+5. Report that only new Claude Code sessions pick up the default. Existing sessions must be restarted or recreated.
+6. Mention the remaining Claude Code exceptions: protected paths such as `.git`, most `.claude`, `.mcp.json`, `.claude.json`, and shell rc files may still prompt; web/remote-control entrypoints may not support bypass mode.
 
 ## Latency Tuning
 
@@ -137,6 +167,59 @@ Expected evidence after restart:
 - `engine started` for each configured project
 - Claude Code sessions launch with `--permission-mode bypassPermissions`
 - Codex sessions no longer generate approval requests for normal full-auto work
+
+## Hermes ACP Empty Reply / HTTP 400
+
+When a Telegram bot has been switched to `agent.type = "acp"` with Hermes, but the bot returns an empty reply or the session dies immediately, check for a Hermes model/provider mismatch before blaming `cc-connect`.
+
+Typical symptom in `~/.cc-connect/logs/cc-connect.log`:
+
+- `agent=acp` session starts with `is_resume=false`
+- Hermes stderr shows `Auxiliary auto-detect: using main provider openai-codex (anthropic/claude-opus-4.6)`
+- Then an HTTP 400 from `https://chatgpt.com/backend-api/codex`
+- Error text says the Claude model is not supported for a ChatGPT/Codex account
+
+Root cause:
+
+- `~/.hermes/config.yaml` still points `model.default` at an OpenRouter-style Claude model such as `anthropic/claude-opus-4.6`
+- But Hermes only has `OpenAI Codex` logged in and no `OPENROUTER_API_KEY`
+- Provider auto-detect falls back to `openai-codex`, then sends an incompatible model slug and fails
+
+Diagnosis:
+
+```bash
+hermes status
+tail -n 120 ~/.cc-connect/logs/cc-connect.log
+hermes chat -Q --provider openai-codex -q 'Reply with exactly OK.'
+```
+
+If `hermes status` shows:
+
+- `Model: anthropic/claude-opus-4.6`
+- `Provider: OpenAI Codex`
+- `OpenRouter ✗ (not set)`
+- `OpenAI Codex ✓ logged in`
+
+then the config is inconsistent.
+
+Minimal fix for a Codex-backed Hermes setup:
+
+```bash
+cp ~/.hermes/config.yaml ~/.hermes/config.yaml.bak.hermes-codex-fix-$(date +%Y%m%d-%H%M%S)
+hermes config set model.provider openai-codex
+hermes config set model.default gpt-5.5
+hermes config set model.base_url https://chatgpt.com/backend-api/codex
+```
+
+Then verify again:
+
+```bash
+hermes status
+hermes chat -Q --provider openai-codex -q 'Reply with exactly OK.'
+cc-connect daemon restart
+```
+
+After the restart, send `/new` to the Telegram bot before testing so the project does not resume an old broken ACP session.
 
 ## Recovery
 

@@ -77,6 +77,26 @@ Daily use:
 tcp-daily-report-table --date 2026/4/16 --name 詹香平
 ```
 
+Work hours allocation sheet:
+
+```bash
+python3 ~/.codex/skills/daily-report-table/scripts/work_hours_sheet.py "今天加班2.5小时"
+```
+
+Browser fill for the open form:
+
+```bash
+python3 ~/.codex/skills/daily-report-table/scripts/fill_work_hours_form.py "今天加班2.5小时"
+```
+
+- 生成文件: `工时分配单-{YYYY-MM-DD}.md`
+- 输出目录: `D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化`
+- 仅输出可复制到表格的值位，不输出字段名或说明文字
+- 固定值: `扬州晶澳`、`否`
+- 计算值: `出勤小时`、`加班小时`、`合计工时`、末尾独立 `时长`
+- 普通网页输入框不会把整段粘贴自动分配到多个控件；需要用填表脚本按标签分别填入搜索框、选择框和输入框。
+- 周一到周五出勤 8 小时，周日出勤 0 小时；周六以 `2026-04-25` 为小周起点大小周交替。
+
 Fast enterprise WeChat HTML refresh without duplicate note appends:
 
 ```bash

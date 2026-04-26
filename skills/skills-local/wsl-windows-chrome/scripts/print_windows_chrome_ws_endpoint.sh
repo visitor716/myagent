@@ -131,13 +131,13 @@ if [[ -z "$RELAY_BIND_HOST" ]]; then
   exit 1
 fi
 
-if ! wsl_windows_chrome_has_cmd powershell.exe; then
+if ! wsl_windows_chrome_has_powershell; then
   echo "powershell.exe not found; relay-assisted attach is unavailable." >&2
   print_setup_hint >&2
   exit 1
 fi
 
-"$SCRIPT_DIR/start_windows_chrome_cdp_relay.sh" "$RELAY_PORT" "$RESOLVED_CDP_PORT" "$RELAY_BIND_HOST" >/dev/null
+bash "$SCRIPT_DIR/start_windows_chrome_cdp_relay.sh" "$RELAY_PORT" "$RESOLVED_CDP_PORT" "$RELAY_BIND_HOST" >/dev/null
 
 if ! ws_endpoint="$(wsl_windows_chrome_http_ws_endpoint "$RELAY_BIND_HOST" "$RELAY_PORT" 2>/dev/null)"; then
   echo "Relay did not become reachable on $RELAY_BIND_HOST:$RELAY_PORT." >&2
