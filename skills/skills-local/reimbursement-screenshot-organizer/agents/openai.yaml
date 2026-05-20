@@ -1,0 +1,7 @@
+interface:
+  display_name: "报销截图整理"
+  short_description: "整理报销截图、PDF 和邮箱附件并核对规范"
+  default_prompt: "Use $reimbursement-screenshot-organizer to organize reimbursement screenshots, PDFs, and downloaded email attachments by content, rename them, classify them into expense folders, and check reimbursement compliance."
+
+policy:
+  allow_implicit_invocation: true
