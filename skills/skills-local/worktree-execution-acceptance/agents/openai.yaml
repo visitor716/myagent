@@ -1,0 +1,7 @@
+interface:
+  display_name: "Worktree Execution Acceptance"
+  short_description: "Validate real worktree execution cwd"
+  default_prompt: "Use $worktree-execution-acceptance to verify whether this repository's agent runner actually executes tasks inside Git worktrees."
+
+policy:
+  allow_implicit_invocation: true

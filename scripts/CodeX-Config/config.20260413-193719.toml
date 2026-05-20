@@ -1,0 +1,92 @@
+model = "gpt-5.4"
+model_reasoning_effort = "xhigh"
+
+# Approval policy: "untrusted", "on-request", or "never"
+# - untrusted: Only run "trusted" commands without asking
+# - on-request: The model decides when to ask the user for approval (RECOMMENDED)
+# - never: Never ask for user approval (DANGEROUS)
+approval_policy = "on-request"
+
+# Sandbox mode: "read-only", "workspace-write", or "danger-full-access"
+# - read-only: Default, read-only sandbox
+# - workspace-write: Allow writing within the current workspace (RECOMMENDED)
+# - danger-full-access: Disable sandboxing (DANGEROUS)
+sandbox_mode = "workspace-write"
+
+# Enable permissions profile for workspace access
+default_permissions = "workspace"
+
+# Additional directories that should be writable
+additional_dirs = [
+    "C:\\Users\\zhanxp\\.codex",
+    "D:\\Script"
+]
+
+personality = "pragmatic"
+
+[mcp_servers]
+
+[mcp_servers.chrome-devtools]
+type = "stdio"
+command = "cmd"
+args = ["/c", "npx", "chrome-devtools-mcp@latest", "--autoConnect"]
+
+[mcp_servers.chrome-devtools.tools.new_page]
+approval_mode = "approve"
+
+[mcp_servers.chrome-devtools.tools.take_snapshot]
+approval_mode = "approve"
+
+[mcp_servers.chrome-devtools.tools.navigate_page]
+approval_mode = "approve"
+
+[mcp_servers.chrome-devtools.tools.click]
+approval_mode = "approve"
+
+[mcp_servers.context7]
+type = "stdio"
+command = "cmd"
+args = ["/c", "npx", "-y", "@upstash/context7-mcp"]
+
+[projects.'D:\\Projects\\offMusicPlayer']
+trust_level = "trusted"
+
+[projects.'C:\\Users\\zhanxp\\.codex']
+trust_level = "trusted"
+
+[projects.'C:\\Users\\zhanxp\\.bashrc']
+trust_level = "trusted"
+
+[projects.'D:\\Script']
+trust_level = "trusted"
+
+[projects.'D:\Projects\offMusicPlayer']
+trust_level = "trusted"
+
+# Windows-specific sandbox configuration
+[windows]
+sandbox = "elevated"
+
+[permissions.workspace]
+[permissions.workspace.file_system]
+write = [
+    "D:\\\\Projects\\\\offMusicPlayer",
+    "C:\\\\Users\\\\zhanxp\\\\.codex",
+    "C:\\\\Users\\\\zhanxp\\\\.bashrc",
+    "D:\\\\Script"
+]
+
+[permissions.workspace.network]
+enabled = true
+mode = "full"
+allow_local_binding = true
+allow_upstream_proxy = true
+
+[permissions.workspace.network.domains]
+"*.openai.com" = "allow"
+"localhost" = "allow"
+"127.0.0.1" = "allow"
+"::1" = "allow"
+
+[features]
+guardian_approval = true

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Telegram Input Flow"
+  short_description: "Implement mobile-friendly Telegram input and task execution flows."
+  default_prompt: "Use this skill when converting a Telegram Bot button flow into simple text input, or when wiring Running cards to async task completion/failure reports with session state, cancellation, callbacks, and tests."

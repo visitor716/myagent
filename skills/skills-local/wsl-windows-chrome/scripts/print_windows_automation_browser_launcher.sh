@@ -82,5 +82,6 @@ if not defined CDP_PORT (
 echo Using CDP port %CDP_PORT%
 start "" "%BROWSER_EXE%" ^
   --remote-debugging-port=%CDP_PORT% ^
+  --remote-debugging-address=0.0.0.0 ^
   --user-data-dir="%PROFILE_DIR%"
 EOF

@@ -1,0 +1,13 @@
+{
+  "name": "telegram-input-flow",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/telegram-input-flow",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/telegram-input-flow",
+    "/home/zhanxp/.claude/skills/telegram-input-flow",
+    "/home/zhanxp/.hermes/skills/myagent/telegram-input-flow"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for implementing mobile-friendly Telegram Bot multi-step text input flows."
+}

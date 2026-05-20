@@ -6,13 +6,16 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import re
 import subprocess
 import sys
+import zipfile
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Iterable
+from xml.sax.saxutils import escape as escape_xml
 
 DEFAULTS = {
     'group': '罗威组',
@@ -25,6 +28,9 @@ DEFAULTS = {
     'output_dir': r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化',
     'main_note': '每天日报.md',
     'spot_note': '光斑调试记录.md',
+    'main_tsv_file': '每天日报.tsv',
+    'spot_tsv_file': '光斑调试记录.tsv',
+    'xlsx_file': '日报表格-{date}.xlsx',
     'wecom_html_file': '企业微信日报-{date}.html',
     'chart_column_file': '光斑异常图表列-{date}.tsv',
     'chart_copy_html_file': '光斑异常图表复制-{date}.html',
@@ -64,10 +70,14 @@ MACHINE_RE = re.compile(r'(\d+[A-Za-z](?:\d+)?)')
 NUMBERED_SPLIT_RE = re.compile(r'\s*\d+[、.．)]\s*')
 SECONDARY_ENTRY_SPLIT_RE = re.compile(r'(?<=[。；;])\s*(?=\d+[A-Za-z](?:\d+)?)')
 WINDOWS_DRIVE_RE = re.compile(r'^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$')
+WSL_MOUNT_RE = re.compile(r'^/mnt/(?P<drive>[A-Za-z])/(?P<rest>.*)$')
 PROCESS_VERB_RE = re.compile(
     r'(调整|更换|清洗|擦拭|断电|插拔|复位|优化|移动|校正|校准|补偿|检查|清理|处理|交付|重调|重新|重启|联系|恢复)'
 )
 RESULT_MARKER_RE = re.compile(r'(恢复生产|恢复正常|复位正常|光斑(?:形貌)?OK|光斑OK|正常生产|OK)')
+ENERGY_DIRECTIONAL_OFFSET_RE = re.compile(
+    r'能量(?:[^，。；;,.]{0,6}?偏[上中下左前后右里外]{1,4}|(?:往|向|朝)?[上中下左前后右里外]{1,4}偏|偏移)'
+)
 
 ABNORMAL_PATTERNS = [
     re.compile(r'驱动器报警[0-9A-Za-z-]+'),
@@ -88,6 +98,10 @@ ABNORMAL_PATTERNS = [
 AUTO_CATEGORY = 'auto'
 PROCESS_CATEGORY = '工艺调试'
 AUTOMATION_CATEGORY = '自动化调试'
+UTF8_BOM = b'\xef\xbb\xbf'
+CONFIG_ENV_VAR = 'TCP_DAILY_REPORT_CONFIG'
+CONFIG_FILENAME = '.tcp-daily-report-table.json'
+DEFAULT_WRITE_MODE = 'xlsx'
 
 
 @dataclass
@@ -109,6 +123,15 @@ class ChartExport:
     unmapped_rows: list[str] = field(default_factory=list)
 
 
+@dataclass
+class GeneratedReport:
+    metadata: dict[str, str]
+    main_rows: list[list[str]]
+    spot_rows: list[list[str]]
+    chart_export: ChartExport | None
+    warnings: list[str] = field(default_factory=list)
+
+
 def today_string() -> str:
     current = date.today()
     return f'{current.year}/{current.month}/{current.day}'
@@ -118,16 +141,38 @@ def clean_cell(value: str) -> str:
     return value.replace('\n', ' ').replace('|', '\\|').strip()
 
 
+def clean_tsv_cell(value: str) -> str:
+    return value.replace('\n', ' ').replace('\t', ' ').strip()
+
+
+def clean_xlsx_text(value: str) -> str:
+    cleaned = value.replace('\r\n', '\n').replace('\r', '\n')
+    return ''.join(char if char == '\n' or char == '\t' or ord(char) >= 32 else ' ' for char in cleaned)
+
+
 def escape_html_cell(value: str) -> str:
     return html.escape(value.strip()).replace('\n', '<br>')
+
+
+def running_on_windows() -> bool:
+    return sys.platform.startswith('win')
 
 
 def resolve_path(path_value: str) -> Path:
     windows_match = WINDOWS_DRIVE_RE.match(path_value)
     if windows_match:
+        if running_on_windows():
+            return Path(path_value)
         drive = windows_match.group('drive').lower()
         rest = windows_match.group('rest').replace('\\', '/')
         return Path(f'/mnt/{drive}/{rest}')
+
+    wsl_mount_match = WSL_MOUNT_RE.match(path_value)
+    if running_on_windows() and wsl_mount_match:
+        drive = wsl_mount_match.group('drive').upper()
+        rest = wsl_mount_match.group('rest').replace('/', '\\')
+        return Path(f'{drive}:\\{rest}')
+
     return Path(path_value)
 
 
@@ -139,12 +184,48 @@ def display_path(path_value: Path | str) -> str:
         rest = windows_match.group('rest').replace('/', '\\')
         return f'{drive}:\\{rest}'
 
-    mount_match = re.match(r'^/mnt/([A-Za-z])/(.*)$', raw_path)
+    mount_match = WSL_MOUNT_RE.match(raw_path)
     if mount_match:
-        drive = mount_match.group(1).upper()
-        rest = mount_match.group(2).replace('/', '\\')
+        drive = mount_match.group('drive').upper()
+        rest = mount_match.group('rest').replace('/', '\\')
         return f'{drive}:\\{rest}'
     return raw_path
+
+
+def config_path() -> Path:
+    configured_path = os.environ.get(CONFIG_ENV_VAR)
+    if configured_path:
+        return Path(configured_path).expanduser()
+    return Path.home() / CONFIG_FILENAME
+
+
+def load_user_config() -> dict[str, str]:
+    path = config_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(key): str(value) for key, value in data.items() if isinstance(key, str) and isinstance(value, str)}
+
+
+def save_user_config(config: dict[str, str]) -> None:
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def default_output_dir() -> str:
+    return load_user_config().get('output_dir', DEFAULTS['output_dir'])
+
+
+def remember_output_dir(output_dir: str) -> None:
+    config = load_user_config()
+    config['output_dir'] = output_dir
+    save_user_config(config)
 
 
 def normalize_whitespace(text: str) -> str:
@@ -225,7 +306,7 @@ def detect_spot(process_text: str, abnormal: str) -> bool:
 def normalize_spot_issue(abnormal: str, process_text: str) -> str:
     combined = f'{abnormal} {process_text}'
     if '缺失' in combined:
-        return '光斑缺失'
+        return '光斑破洞'
     if '破洞' in combined:
         return '光斑破洞'
     if '内缩' in combined:
@@ -335,6 +416,19 @@ def resolve_filename_template(template: str, raw_date: str) -> str:
     return template.replace('{date}', format_file_date(raw_date))
 
 
+def normalize_main_review_issue(abnormal: str) -> str:
+    compact_abnormal = re.sub(r'\s+', '', abnormal)
+    if ENERGY_DIRECTIONAL_OFFSET_RE.search(compact_abnormal):
+        return '能量偏移'
+    if '破洞' in compact_abnormal:
+        return '光斑破洞'
+    if '内缩' in compact_abnormal:
+        return '光斑内缩'
+    if compact_abnormal in ('光斑上下缺失', '光斑左边缺失'):
+        return '光斑破洞'
+    return abnormal
+
+
 def build_main_rows(entries: Iterable[ParsedEntry], metadata: dict[str, str]) -> list[list[str]]:
     rows: list[list[str]] = []
     for entry in entries:
@@ -349,7 +443,7 @@ def build_main_rows(entries: Iterable[ParsedEntry], metadata: dict[str, str]) ->
                 resolve_abnormal_category(entry, metadata['category']),
                 entry.abnormal,
                 entry.process,
-                entry.abnormal,
+                normalize_main_review_issue(entry.abnormal),
                 metadata['name'],
             ]
         )
@@ -389,8 +483,8 @@ def render_markdown(headers: list[str], rows: list[list[str]]) -> str:
 def render_tsv(headers: list[str], rows: list[list[str]]) -> str:
     if not rows:
         return ''
-    lines = ['\t'.join(headers)]
-    lines.extend('\t'.join(clean_cell(cell) for cell in row) for row in rows)
+    lines = ['\t'.join(clean_tsv_cell(header) for header in headers)]
+    lines.extend('\t'.join(clean_tsv_cell(cell) for cell in row) for row in rows)
     return '\n'.join(lines)
 
 
@@ -717,9 +811,104 @@ def append_rows_to_markdown_note(file_path: Path, headers: list[str], title: str
             handle.write('\n')
 
 
+def ensure_tsv_table(file_path: Path, headers: list[str]) -> None:
+    if file_path.exists():
+        existing_bytes = file_path.read_bytes()
+        if existing_bytes:
+            if not existing_bytes.startswith(UTF8_BOM):
+                file_path.write_bytes(UTF8_BOM + existing_bytes)
+            if file_path.read_text(encoding='utf-8-sig').strip():
+                return
+
+    header_line = '\t'.join(clean_tsv_cell(header) for header in headers)
+    file_path.write_bytes(UTF8_BOM + f'{header_line}\n'.encode('utf-8'))
+
+
+def append_rows_to_tsv_table(file_path: Path, headers: list[str], rows: list[list[str]]) -> None:
+    if not rows:
+        return
+
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_tsv_table(file_path, headers)
+    existing_content = file_path.read_text(encoding='utf-8-sig')
+
+    with file_path.open('a', encoding='utf-8') as handle:
+        if existing_content and not existing_content.endswith('\n'):
+            handle.write('\n')
+        for row in rows:
+            handle.write('\t'.join(clean_tsv_cell(cell) for cell in row))
+            handle.write('\n')
+
+
 def write_wecom_html(file_path: Path, main_rows: list[list[str]], spot_rows: list[list[str]]) -> None:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(render_wecom_html(main_rows, spot_rows), encoding='utf-8')
+
+
+def render_xlsx_cell(row_index: int, col_index: int, value: str) -> str:
+    cell_ref = f'{col_index_to_label(col_index)}{row_index}'
+    text = escape_xml(clean_xlsx_text(value))
+    return f'<c r="{cell_ref}" t="inlineStr"><is><t>{text}</t></is></c>'
+
+
+def render_xlsx_sheet(headers: list[str], rows: list[list[str]]) -> str:
+    all_rows = [headers, *rows]
+    xml_rows: list[str] = []
+    for row_index, row in enumerate(all_rows, start=1):
+        cells = ''.join(render_xlsx_cell(row_index, col_index, cell) for col_index, cell in enumerate(row))
+        xml_rows.append(f'<row r="{row_index}">{cells}</row>')
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<sheetData>'
+        + ''.join(xml_rows)
+        + '</sheetData></worksheet>'
+    )
+
+
+def write_xlsx_workbook(file_path: Path, main_rows: list[list[str]], spot_rows: list[list[str]]) -> None:
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    sheet2_rows = spot_rows if spot_rows else [['未检测到光斑相关内容，未生成光斑调试表。']]
+    sheet2_headers = SPOT_HEADERS if spot_rows else ['提示']
+    files = {
+        '[Content_Types].xml': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '</Types>'
+        ),
+        '_rels/.rels': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>'
+        ),
+        'xl/workbook.xml': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets>'
+            '<sheet name="每天日报" sheetId="1" r:id="rId1"/>'
+            '<sheet name="光斑调试记录" sheetId="2" r:id="rId2"/>'
+            '</sheets></workbook>'
+        ),
+        'xl/_rels/workbook.xml.rels': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'
+            '</Relationships>'
+        ),
+        'xl/worksheets/sheet1.xml': render_xlsx_sheet(MAIN_HEADERS, main_rows),
+        'xl/worksheets/sheet2.xml': render_xlsx_sheet(sheet2_headers, sheet2_rows),
+    }
+    with zipfile.ZipFile(file_path, 'w', compression=zipfile.ZIP_DEFLATED) as workbook:
+        for name, content in files.items():
+            workbook.writestr(name, content)
 
 
 def col_index_to_label(index: int) -> str:
@@ -875,7 +1064,7 @@ def build_chart_export(entries: Iterable[ParsedEntry], max_index: int) -> ChartE
 
 def write_chart_column(file_path: Path, chart_export: ChartExport) -> None:
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text('\n'.join(chart_export.values), encoding='utf-8')
+    file_path.write_bytes(UTF8_BOM + '\n'.join(chart_export.values).encode('utf-8'))
 
 
 def write_chart_copy_html(file_path: Path, chart_export: ChartExport, raw_date: str, chart_target_sheet: str, chart_start_cell: str) -> None:
@@ -898,7 +1087,13 @@ def persist_outputs(
     output_dir = resolve_path(metadata['output_dir'])
     main_path = output_dir / metadata['main_note']
     spot_path = output_dir / metadata['spot_note']
+    main_tsv_path = output_dir / metadata.get('main_tsv_file', DEFAULTS['main_tsv_file'])
+    spot_tsv_path = output_dir / metadata.get('spot_tsv_file', DEFAULTS['spot_tsv_file'])
+    xlsx_file = metadata.get('xlsx_file') or resolve_filename_template(DEFAULTS['xlsx_file'], metadata['date'])
+    xlsx_path = output_dir / xlsx_file
     write_notes = write_mode in ('all', 'notes')
+    write_tsv = write_mode in ('all', 'notes', 'tsv')
+    write_xlsx = write_mode in ('all', 'xlsx')
     write_html = fmt == 'wecom-html' and write_mode in ('all', 'html')
 
     saved_messages: list[str] = []
@@ -911,7 +1106,24 @@ def persist_outputs(
         else:
             saved_messages.append('未检测到光斑相关内容，未写入光斑调试记录。')
     else:
-        saved_messages.append('已跳过日报/光斑笔记写入。')
+        saved_messages.append('已跳过日报/光斑 Markdown 写入。')
+
+    if write_tsv:
+        append_rows_to_tsv_table(main_tsv_path, MAIN_HEADERS, main_rows)
+        saved_messages.append(f'已追加 TSV 表格: {display_path(main_tsv_path)}')
+        if spot_rows:
+            append_rows_to_tsv_table(spot_tsv_path, SPOT_HEADERS, spot_rows)
+            saved_messages.append(f'已追加 TSV 表格: {display_path(spot_tsv_path)}')
+        else:
+            saved_messages.append('未检测到光斑相关内容，未写入光斑 TSV 表格。')
+    else:
+        saved_messages.append('已跳过 TSV 表格写入。')
+
+    if write_xlsx:
+        write_xlsx_workbook(xlsx_path, main_rows, spot_rows)
+        saved_messages.append(f'已生成 Excel 表格: {display_path(xlsx_path)}')
+    else:
+        saved_messages.append('已跳过 Excel 表格写入。')
 
     if write_html:
         wecom_html_path = output_dir / metadata['wecom_html_file']
@@ -947,62 +1159,50 @@ def read_report_text(args: argparse.Namespace) -> str:
     return sys.stdin.read()
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='Generate fixed daily report tables.')
-    parser.add_argument('--date', default=today_string(), help='日报日期，默认今天。')
-    parser.add_argument('--name', default=DEFAULTS['name'], help='记录人员，默认詹香平。')
-    parser.add_argument('--group', default=DEFAULTS['group'], help='组别，默认罗威组。')
-    parser.add_argument('--base', default=DEFAULTS['base'], help='客户基地，默认扬州晶澳F3。')
-    parser.add_argument('--device', default=DEFAULTS['device'], help='设备类型，默认TCP。')
-    parser.add_argument('--business', default=DEFAULTS['business'], help='业务，默认运维。')
-    parser.add_argument('--category', default=DEFAULTS['category'], help='异常分类，默认自动判断；传入具体值可手动覆盖。')
-    parser.add_argument('--area', default=DEFAULTS['area'], help='光斑调试表区域，默认F3。')
-    parser.add_argument('--output-dir', default=DEFAULTS['output_dir'], help='输出目录。')
-    parser.add_argument('--main-note', default=DEFAULTS['main_note'], help='日报笔记文件名。')
-    parser.add_argument('--spot-note', default=DEFAULTS['spot_note'], help='光斑笔记文件名。')
-    parser.add_argument('--wecom-html-file', default=DEFAULTS['wecom_html_file'], help='企业微信 HTML 文件名。')
-    parser.add_argument('--chart-column-file', default=DEFAULTS['chart_column_file'], help='图表列文件名。')
-    parser.add_argument('--chart-copy-html-file', default=DEFAULTS['chart_copy_html_file'], help='图表复制页文件名。')
-    parser.add_argument('--chart-target-sheet', default=DEFAULTS['chart_target_sheet'], help='图表目标工作表。')
-    parser.add_argument('--chart-start-cell', default='', help='图表目标起始单元格。')
-    parser.add_argument('--chart-session', default='', help='通过已附着的 playwright-cli session 自动定位图表起始格。')
-    parser.add_argument('--chart-date-label', default='', help='图表日期表头，默认从 --date 自动推导。')
-    parser.add_argument('--chart-anchor-label', default=DEFAULTS['chart_anchor_label'], help='图表锚点行标签。')
-    parser.add_argument('--chart-max-index', type=int, default=7, help='图表最大机台编号。')
-    parser.add_argument('--chart-copy', action='store_true', help='生成图表列和复制页。')
-    parser.add_argument(
-        '--write-mode',
-        choices=('all', 'notes', 'html', 'none'),
-        default='all',
-        help='写入模式。all=笔记+HTML，notes=仅笔记，html=仅HTML，none=全部跳过。',
-    )
-    parser.add_argument(
-        '--preview',
-        choices=('auto', 'tables', 'tsv', 'summary', 'none'),
-        default='auto',
-        help='终端预览模式。auto 会在 wecom-html 下默认输出 summary；tsv 可配合 wecom-html 一次产出 HTML + TSV。',
-    )
-    parser.add_argument(
-        '--format',
-        choices=('markdown', 'tsv', 'wecom-html'),
-        default='markdown',
-        help='输出格式。wecom-html 会额外保存企业微信粘贴版 HTML。',
-    )
-    parser.add_argument('--text', help='直接传入日报文本。')
-    parser.add_argument('--input-file', help='从文件读取日报文本。')
-    return parser
+def read_interactive_report_text() -> str:
+    print('请粘贴日报内容。结束时单独输入 END 后回车；也可以按 Ctrl-D：')
+    lines: list[str] = []
+    while True:
+        try:
+            line = input()
+        except EOFError:
+            break
+        if line.strip().upper() == 'END':
+            break
+        lines.append(line)
+    return '\n'.join(lines).strip()
 
 
-def main() -> int:
-    parser = build_parser()
-    args = parser.parse_args()
-    report_text = read_report_text(args)
-    entry_texts = split_entries(report_text)
+def strip_path_quotes(path_value: str) -> str:
+    return path_value.strip().strip('"').strip("'").strip()
 
-    if not entry_texts:
-        parser.error('未读取到日报内容。')
 
-    metadata = {
+def prompt_output_choice(default_output_dir: str) -> tuple[str, str]:
+    while True:
+        print('\n请选择保存位置：')
+        print(f'1. 默认目录：{default_output_dir}')
+        print('2. 当前目录')
+        print('3. 自定义路径')
+        print('4. 只预览不保存')
+        choice = input('请输入序号 [1]：').strip()
+
+        if choice in ('', '1'):
+            return default_output_dir, DEFAULT_WRITE_MODE
+        if choice == '2':
+            return str(Path.cwd()), DEFAULT_WRITE_MODE
+        if choice == '3':
+            custom_path = strip_path_quotes(input('请输入保存目录：'))
+            if custom_path:
+                return custom_path, DEFAULT_WRITE_MODE
+            print('保存目录不能为空，请重新选择。')
+            continue
+        if choice == '4':
+            return default_output_dir, 'none'
+        print('无效选择，请输入 1、2、3 或 4。')
+
+
+def build_metadata(args: argparse.Namespace) -> dict[str, str]:
+    return {
         'date': args.date,
         'name': args.name,
         'group': args.group,
@@ -1014,12 +1214,24 @@ def main() -> int:
         'output_dir': args.output_dir,
         'main_note': args.main_note,
         'spot_note': args.spot_note,
+        'main_tsv_file': args.main_tsv_file,
+        'spot_tsv_file': args.spot_tsv_file,
+        'xlsx_file': resolve_filename_template(args.xlsx_file, args.date),
         'wecom_html_file': resolve_filename_template(args.wecom_html_file, args.date),
         'chart_column_file': resolve_filename_template(args.chart_column_file, args.date),
         'chart_copy_html_file': resolve_filename_template(args.chart_copy_html_file, args.date),
         'chart_target_sheet': args.chart_target_sheet,
         'chart_start_cell': args.chart_start_cell,
     }
+
+
+def prepare_report(args: argparse.Namespace, report_text: str, parser: argparse.ArgumentParser) -> GeneratedReport:
+    entry_texts = split_entries(report_text)
+
+    if not entry_texts:
+        parser.error('未读取到日报内容。')
+
+    metadata = build_metadata(args)
 
     if args.chart_copy and args.chart_session and not args.chart_start_cell:
         chart_date_label = args.chart_date_label or format_chart_date(args.date)
@@ -1041,29 +1253,147 @@ def main() -> int:
     spot_rows = build_spot_rows(parsed_entries, metadata)
     chart_export = build_chart_export(parsed_entries, args.chart_max_index) if args.chart_copy else None
 
-    preview_output = render_sections(main_rows, spot_rows, args.format, args.preview, args.chart_copy, metadata)
-    if preview_output:
-        print(preview_output)
+    return GeneratedReport(
+        metadata=metadata,
+        main_rows=main_rows,
+        spot_rows=spot_rows,
+        chart_export=chart_export,
+        warnings=warnings,
+    )
 
+
+def print_warnings(warnings: list[str]) -> None:
+    if warnings:
+        print('\n警告:', file=sys.stderr)
+        for warning in warnings:
+            print(f'- {warning}', file=sys.stderr)
+
+
+def persist_generated_report(generated: GeneratedReport, args: argparse.Namespace) -> None:
     saved_messages = persist_outputs(
-        main_rows,
-        spot_rows,
-        metadata,
+        generated.main_rows,
+        generated.spot_rows,
+        generated.metadata,
         args.format,
         args.write_mode,
-        chart_export,
+        generated.chart_export,
         args.chart_copy,
     )
     print('\n写入结果:')
     for message in saved_messages:
         print(f'- {message}')
 
-    if warnings:
-        print('\n警告:', file=sys.stderr)
-        for warning in warnings:
-            print(f'- {warning}', file=sys.stderr)
 
+def run_report(args: argparse.Namespace, report_text: str, parser: argparse.ArgumentParser) -> int:
+    generated = prepare_report(args, report_text, parser)
+
+    preview_output = render_sections(
+        generated.main_rows,
+        generated.spot_rows,
+        args.format,
+        args.preview,
+        args.chart_copy,
+        generated.metadata,
+    )
+    if preview_output:
+        print(preview_output)
+
+    persist_generated_report(generated, args)
+    print_warnings(generated.warnings)
     return 0
+
+
+def should_run_interactive_wizard(argv: list[str]) -> bool:
+    return not argv and sys.stdin.isatty()
+
+
+def run_interactive_wizard(parser: argparse.ArgumentParser) -> int:
+    args = parser.parse_args([])
+    report_text = read_interactive_report_text()
+    generated = prepare_report(args, report_text, parser)
+
+    preview_output = render_sections(
+        generated.main_rows,
+        generated.spot_rows,
+        args.format,
+        'summary',
+        args.chart_copy,
+        generated.metadata,
+    )
+    if preview_output:
+        print(preview_output)
+    print_warnings(generated.warnings)
+
+    output_dir, write_mode = prompt_output_choice(args.output_dir)
+    args.output_dir = output_dir
+    args.write_mode = write_mode
+    args.preview = 'summary'
+    generated.metadata['output_dir'] = output_dir
+    if write_mode != 'none':
+        remember_output_dir(output_dir)
+        print(f'已记住默认保存目录：{display_path(resolve_path(output_dir))}')
+    persist_generated_report(generated, args)
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description='Generate fixed daily report tables.')
+    parser.add_argument('--date', default=today_string(), help='日报日期，默认今天。')
+    parser.add_argument('--name', default=DEFAULTS['name'], help='记录人员，默认詹香平。')
+    parser.add_argument('--group', default=DEFAULTS['group'], help='组别，默认罗威组。')
+    parser.add_argument('--base', default=DEFAULTS['base'], help='客户基地，默认扬州晶澳F3。')
+    parser.add_argument('--device', default=DEFAULTS['device'], help='设备类型，默认TCP。')
+    parser.add_argument('--business', default=DEFAULTS['business'], help='业务，默认运维。')
+    parser.add_argument('--category', default=DEFAULTS['category'], help='异常分类，默认自动判断；传入具体值可手动覆盖。')
+    parser.add_argument('--area', default=DEFAULTS['area'], help='光斑调试表区域，默认F3。')
+    parser.add_argument('--output-dir', default=default_output_dir(), help='输出目录。')
+    parser.add_argument('--main-note', default=DEFAULTS['main_note'], help='日报笔记文件名。')
+    parser.add_argument('--spot-note', default=DEFAULTS['spot_note'], help='光斑笔记文件名。')
+    parser.add_argument('--main-tsv-file', default=DEFAULTS['main_tsv_file'], help='日报 TSV 表格文件名。')
+    parser.add_argument('--spot-tsv-file', default=DEFAULTS['spot_tsv_file'], help='光斑 TSV 表格文件名。')
+    parser.add_argument('--xlsx-file', default=DEFAULTS['xlsx_file'], help='Excel 表格文件名。')
+    parser.add_argument('--wecom-html-file', default=DEFAULTS['wecom_html_file'], help='企业微信 HTML 文件名。')
+    parser.add_argument('--chart-column-file', default=DEFAULTS['chart_column_file'], help='图表列文件名。')
+    parser.add_argument('--chart-copy-html-file', default=DEFAULTS['chart_copy_html_file'], help='图表复制页文件名。')
+    parser.add_argument('--chart-target-sheet', default=DEFAULTS['chart_target_sheet'], help='图表目标工作表。')
+    parser.add_argument('--chart-start-cell', default='', help='图表目标起始单元格。')
+    parser.add_argument('--chart-session', default='', help='通过已附着的 playwright-cli session 自动定位图表起始格。')
+    parser.add_argument('--chart-date-label', default='', help='图表日期表头，默认从 --date 自动推导。')
+    parser.add_argument('--chart-anchor-label', default=DEFAULTS['chart_anchor_label'], help='图表锚点行标签。')
+    parser.add_argument('--chart-max-index', type=int, default=7, help='图表最大机台编号。')
+    parser.add_argument('--chart-copy', action='store_true', help='生成图表列和复制页。')
+    parser.add_argument(
+        '--write-mode',
+        choices=('all', 'notes', 'tsv', 'xlsx', 'html', 'none'),
+        default=DEFAULT_WRITE_MODE,
+        help='写入模式。默认 xlsx。all=Markdown+TSV+XLSX（wecom-html时额外HTML），notes=Markdown+TSV，tsv=仅TSV，xlsx=仅XLSX，html=仅HTML，none=全部跳过。',
+    )
+    parser.add_argument(
+        '--preview',
+        choices=('auto', 'tables', 'tsv', 'summary', 'none'),
+        default='auto',
+        help='终端预览模式。auto 会在 wecom-html 下默认输出 summary；tsv 可配合 wecom-html 一次产出 HTML + TSV。',
+    )
+    parser.add_argument(
+        '--format',
+        choices=('markdown', 'tsv', 'wecom-html'),
+        default='markdown',
+        help='输出格式。wecom-html 会额外保存企业微信粘贴版 HTML。',
+    )
+    parser.add_argument('--text', help='直接传入日报文本。')
+    parser.add_argument('--input-file', help='从文件读取日报文本。')
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    raw_args = sys.argv[1:] if argv is None else argv
+    if should_run_interactive_wizard(raw_args):
+        return run_interactive_wizard(parser)
+
+    args = parser.parse_args(raw_args)
+    report_text = read_report_text(args)
+    return run_report(args, report_text, parser)
 
 
 if __name__ == '__main__':

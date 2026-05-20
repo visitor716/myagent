@@ -5,17 +5,19 @@ usage() {
   cat <<'EOF'
 Usage:
   bash scripts/cc-switch-run.sh doctor
-  bash scripts/cc-switch-run.sh [--auto|--windows|--wsl] <cc-switch args...>
+  bash scripts/cc-switch-run.sh [--auto|--windows|--wsl|--home <path>] <cc-switch args...>
 
 Modes:
   --auto     Prefer the home with the larger provider count
   --windows  Force /mnt/c/Users/<user> as HOME when available
   --wsl      Force the current WSL HOME
+  --home     Force an explicit HOME, useful for isolated worker homes
 
 Examples:
   bash scripts/cc-switch-run.sh doctor
   bash scripts/cc-switch-run.sh --windows provider list
   bash scripts/cc-switch-run.sh --windows --app codex provider current
+  bash scripts/cc-switch-run.sh --home /home/zhanxp/.agents/bdcc1 --app claude provider current
 EOF
 }
 
@@ -125,6 +127,16 @@ if [[ $# -gt 0 ]]; then
       mode="wsl"
       shift
       ;;
+    --home)
+      mode="home"
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "error: --home requires a path" >&2
+        exit 1
+      fi
+      explicit_home="$1"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -159,6 +171,13 @@ case "$mode" in
     ;;
   wsl)
     target_home="$linux_home"
+    ;;
+  home)
+    if [[ ! -d "${explicit_home:-}" ]]; then
+      echo "error: explicit HOME not found at ${explicit_home:-}" >&2
+      exit 1
+    fi
+    target_home="$explicit_home"
     ;;
   *)
     echo "error: unsupported mode $mode" >&2

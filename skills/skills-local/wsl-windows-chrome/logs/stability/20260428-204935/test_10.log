@@ -1,0 +1,13 @@
+[wsl-windows-chrome] Direct attach is unavailable or failed; starting relay for port 9222 on 172.31.112.1:39222.
+[wsl-windows-chrome] Trying playwright-cli attach via ws://172.31.112.1:39222/devtools/browser/831a8a2c-84e7-4394-ab28-90f4f3bf7af0
+### Ran Playwright code
+```js
+await page.goto('https://example.com');
+```
+### Page
+- Page URL: https://example.com/
+- Page Title: Example Domain
+### Snapshot
+- [Snapshot](.playwright-cli/page-2026-04-28T12-51-53-807Z.yml)
+[wsl-windows-chrome] Attached through relay-assisted CDP attach
+[wsl-windows-chrome] Attached to the dedicated Windows automation browser through relay ws://172.31.112.1:39222/devtools/browser/831a8a2c-84e7-4394-ab28-90f4f3bf7af0

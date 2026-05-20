@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/common.sh"
 
 SESSION="${PLAYWRIGHT_CLI_SESSION:-wsl-windows-chrome}"
 URL=""
-ATTACH_ONLY=false
+ATTACH_ONLY=true  # 默认启用 attach-only，禁止 fallback
 HEADED=false
 STATUS_ONLY=false
 JSON_OUTPUT=false
@@ -32,6 +32,10 @@ If the requested port is unavailable but the dedicated profile advertises a
 different active port in DevToolsActivePort, the helper automatically switches
 to that port before starting a relay.
 
+IMPORTANT: This helper will NOT fall back to a fresh browser session.
+If the Windows automation browser CDP endpoint is not reachable, it will
+fail immediately with diagnostic information and setup instructions.
+
 Options:
   --browser <chrome|edge>  Select the Windows browser family
   --session <name>         Bind playwright-cli commands to a named session
@@ -39,11 +43,11 @@ Options:
   --user-data-dir <path>   Override the Windows automation user-data-dir
   --url <url>              Navigate after attach or open
   --relay-port <port>      Override the WSL-visible relay port (default: 39222)
-  --attach-only            Fail instead of opening a fresh browser
+  --attach-only            (Ignored, default behavior) Always fail instead of opening fresh browser
   --status                 Print detection and reachability status without attaching
   --json                   Print status as JSON (use with --status)
   --verbose                Print extra diagnostics
-  --headed                 Pass --headed to playwright-cli open during fallback
+  --headed                 (Ignored, no fallback)
   --help                   Show this help
 USAGE
 }
@@ -164,24 +168,64 @@ PY
 fail_or_fallback() {
   local reason="$1"
 
-  if [[ "$ATTACH_ONLY" == true ]]; then
-    log "$reason"
-    print_setup_hint >&2
-    return 1
-  fi
-
   log "$reason"
   print_setup_hint >&2
-  log 'Falling back to a fresh playwright-cli browser session; this does not reuse the Windows automation browser state.'
 
-  local cmd=(playwright-cli "-s=$SESSION" open)
-  if [[ -n "$URL" ]]; then
-    cmd+=("$URL")
-  fi
-  if [[ "$HEADED" == true ]]; then
-    cmd+=(--headed)
-  fi
-  "${cmd[@]}"
+  # 输出详细的失败信息和诊断命令
+  {
+    echo ""
+    echo "--- 诊断信息 ---"
+    echo ""
+    echo "当前检测端口: $REQUESTED_CDP_PORT"
+    echo "当前尝试连接地址:"
+    echo "  - 127.0.0.1:$REQUESTED_CDP_PORT"
+    echo "  - $WINDOWS_GATEWAY:$REQUESTED_CDP_PORT"
+    echo "  - $RELAY_BIND_HOST:$RELAY_PORT (relay)"
+    echo ""
+    echo "失败原因: Windows Chrome CDP endpoint 不可达"
+    echo ""
+    echo "--- Windows Chrome 启动命令 (PowerShell) ---"
+    echo ""
+    printf '$chrome = "$env:ProgramFiles\\Google\\Chrome\\Application\\chrome.exe"\n'
+    printf 'if (!(Test-Path $chrome)) {\n'
+    printf '  $chrome = "${env:ProgramFiles(x86)}\\Google\\Chrome\\Application\\chrome.exe"\n'
+    printf '}\n'
+    printf 'if (!(Test-Path $chrome)) {\n'
+    printf '  throw "Chrome not found"\n'
+    printf '}\n'
+    printf 'Start-Process $chrome -ArgumentList @(\n'
+    printf '  "--remote-debugging-address=0.0.0.0",\n'
+    printf '  "--remote-debugging-port=%s",\n' "$REQUESTED_CDP_PORT"
+    printf '  "--user-data-dir=\"%s\"",\n' "$WINDOWS_USER_DATA_DIR_RESOLVED"
+    printf '  "--new-window"'
+    if [[ -n "$URL" ]]; then
+      printf ',\n  "%s"' "$URL"
+    fi
+    printf '\n)\n'
+    echo ""
+    echo "--- CDP 验证命令 ---"
+    echo ""
+    echo "# Windows PowerShell 侧验证:"
+    printf 'Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:%s/json/version"\n' "$REQUESTED_CDP_PORT"
+    echo ""
+    echo "# WSL 侧验证:"
+    cat <<WSL_VERIFY
+/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command 'try { (Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$REQUESTED_CDP_PORT/json/version").Content; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }'
+WSL_VERIFY
+    echo ""
+    echo ""
+    echo "--- 重新运行 attach 命令 ---"
+    echo ""
+    printf 'bash "%s/attach_windows_logged_in_chrome.sh" --browser "%s" --port "%s" --user-data-dir "%s"' "$SCRIPT_DIR" "$BROWSER" "$REQUESTED_CDP_PORT" "$WINDOWS_USER_DATA_DIR_RESOLVED"
+    if [[ -n "$URL" ]]; then
+      printf ' --url "%s"' "$URL"
+    fi
+    printf ' --session "%s"' "$SESSION"
+    echo ""
+    echo ""
+  } >&2
+
+  return 1
 }
 
 attach_endpoint() {

@@ -10,7 +10,10 @@ if ! wsl_windows_chrome_has_powershell; then
   exit 1
 fi
 
-PS_SCRIPT=$(cat <<'PS1'
+tmp_ps1=$(mktemp /tmp/wsl_windows_chrome_XXXXXX.ps1)
+trap 'rm -f "$tmp_ps1"' EXIT
+
+cat >"$tmp_ps1" <<'PS1'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $relayRoot = Join-Path $env:USERPROFILE '.codex\wsl-windows-chrome'
@@ -22,7 +25,7 @@ foreach ($process in $processes) {
 }
 Write-Output $count
 PS1
-)
 
-STOPPED_COUNT=$(wsl_windows_chrome_powershell -Command "$PS_SCRIPT" | tr -d '\r' | tail -n 1)
+STOPPED_COUNT=$(wsl_windows_chrome_powershell -File "$(wslpath -w "$tmp_ps1")" | tr -d '\r' | tail -n 1)
+rm -f "$tmp_ps1"
 echo "Stopped ${STOPPED_COUNT:-0} Windows Chrome CDP relay process(es) managed under %USERPROFILE%\.codex\wsl-windows-chrome"

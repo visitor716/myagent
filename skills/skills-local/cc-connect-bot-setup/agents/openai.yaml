@@ -1,4 +1,4 @@
 interface:
   display_name: "cc-connect Bot Setup"
-  short_description: "Configure cc-connect and Claude Code permission defaults."
-  default_prompt: "Use $cc-connect-bot-setup to inspect ~/.cc-connect/config.toml and ~/.claude/settings.json, configure per-bot full-auto modes or global Claude Code bypassPermissions defaults, and verify restart readiness."
+  short_description: "Configure, diagnose, disable, and verify cc-connect bot bridges."
+  default_prompt: "Use $cc-connect-bot-setup to inspect ~/.cc-connect/config.toml and ~/.claude/settings.json, configure per-bot full-auto modes or global Claude Code bypassPermissions defaults, diagnose watchdog/TTY issues, disable cc-connect when another manager owns Telegram bots, and verify restart or stopped state."

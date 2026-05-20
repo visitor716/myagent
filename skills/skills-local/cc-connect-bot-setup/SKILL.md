@@ -168,6 +168,78 @@ Expected evidence after restart:
 - Claude Code sessions launch with `--permission-mode bypassPermissions`
 - Codex sessions no longer generate approval requests for normal full-auto work
 
+## Disable / Handoff to TG Organ Manager
+
+When the user says CC Connect is no longer the Telegram bot owner because TG Organ Manager now manages bot configuration and organs:
+
+1. Do not delete `~/.cc-connect/config.toml` or tokens unless the user explicitly asks for credential cleanup.
+2. Back up crontab, then comment CC Connect watchdog entries only:
+
+```bash
+mkdir -p ~/.cc-connect/crons
+crontab -l > ~/.cc-connect/crons/crontab.bak.disable-cc-connect-$(date +%Y%m%d-%H%M%S)
+crontab -l | awk '{ if ($0 ~ /^@reboot .*cc-connect-watchdog\.sh start-supervisor/) print "# disabled " strftime("%Y-%m-%d") ": " $0; else print $0 }' | crontab -
+```
+
+3. Stop active CC Connect/watchdog process groups:
+
+```bash
+pgid="$(pgrep -af 'cc-connect-watchdog.sh loop' | awk 'NR==1 { print $1 }' | xargs -r ps -o pgid= -p | tr -d ' ')"
+if [ -n "$pgid" ]; then kill -TERM -"$pgid"; fi
+```
+
+4. Verify stopped:
+
+```bash
+~/.cc-connect/bin/cc-connect-watchdog.sh status
+pgrep -af 'cc-connect|cc-connect-watchdog' || true
+crontab -l
+```
+
+Expected evidence:
+
+- `supervisor=stopped`
+- `cc_connect=stopped`
+- CC Connect `@reboot` line is commented
+- No persistent `cc-connect` or `cc-connect-watchdog.sh loop` process remains
+
+## Windows Terminal Jumping / TTY Attachment
+
+When the user reports Windows Terminal jumping, scrolling, or tabs being affected by CC Connect:
+
+1. Check daemon state and process ownership:
+
+```bash
+cc-connect daemon status
+pgrep -af 'cc-connect|cc-connect-watchdog'
+ps -p <watchdog-pid>,<cc-connect-pid> -o pid,ppid,pgid,sid,tty,stat,lstart,cmd
+pstree -aps <pid>
+```
+
+2. Check whether file descriptors still point at an interactive terminal:
+
+```bash
+ls -l /proc/<watchdog-pid>/fd /proc/<cc-connect-pid>/fd
+```
+
+Risk signal:
+
+- `TTY` is `pts/N`, or fd `0`, `1`, `2` points to `/dev/pts/N`
+
+Expected detached state:
+
+- `TTY` is `?`
+- stdin is `/dev/null`
+- stdout/stderr point to `~/.cc-connect/logs/*.log`
+
+3. If the watchdog was launched from an interactive terminal, change its `start_supervisor` line from `nohup "$0" loop ... &` to:
+
+```bash
+setsid -f "$0" loop >> "$WATCHDOG_LOG" 2>&1 < /dev/null &
+```
+
+4. Restart the watchdog and re-check `ps` plus `/proc/<pid>/fd`.
+
 ## Hermes ACP Empty Reply / HTTP 400
 
 When a Telegram bot has been switched to `agent.type = "acp"` with Hermes, but the bot returns an empty reply or the session dies immediately, check for a Hermes model/provider mismatch before blaming `cc-connect`.

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tcp-daily-report-table"
+version = "0.1.0"
+description = "CLI tools for converting TCP daily report notes into fixed report tables."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "zhanxp" },
+]
+dependencies = []
+
+[project.scripts]
+tcp-daily-report-table = "report_table:main"
+
+[tool.setuptools]
+py-modules = ["report_table"]
+package-dir = { "" = "scripts" }

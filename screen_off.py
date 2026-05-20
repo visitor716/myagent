@@ -1,0 +1,15 @@
+import ctypes
+
+# 常量
+HWND_BROADCAST = 0xFFFF
+WM_SYSCOMMAND = 0x0112
+SC_MONITORPOWER = 0xF170
+MONITOR_OFF = 2
+
+# 调用 Windows API 关闭屏幕
+ctypes.windll.user32.SendMessageW(
+    HWND_BROADCAST,
+    WM_SYSCOMMAND,
+    SC_MONITORPOWER,
+    MONITOR_OFF
+)

@@ -156,7 +156,11 @@ PS1
   ps="${ps//__BROWSER__/$escaped_browser}"
   ps="${ps//__USER_DATA_DIR__/$escaped_dir}"
 
-  wsl_windows_chrome_powershell -Command "$ps" | tr -d '\r'
+  tmp_ps1=$(mktemp /tmp/wsl_windows_chrome_XXXXXX.ps1)
+  trap 'rm -f "$tmp_ps1"' EXIT
+  echo "$ps" >"$tmp_ps1"
+  wsl_windows_chrome_powershell -File "$(wslpath -w "$tmp_ps1")" | tr -d '\r'
+  rm -f "$tmp_ps1"
 }
 
 wsl_windows_chrome_read_process_port() {
@@ -213,7 +217,11 @@ PS1
   ps="${ps//__BROWSER__/$escaped_browser}"
   ps="${ps//__USER_DATA_DIR__/$escaped_dir}"
 
-  wsl_windows_chrome_powershell -Command "$ps" | tr -d '\r'
+  tmp_ps1=$(mktemp /tmp/wsl_windows_chrome_XXXXXX.ps1)
+  trap 'rm -f "$tmp_ps1"' EXIT
+  echo "$ps" >"$tmp_ps1"
+  wsl_windows_chrome_powershell -File "$(wslpath -w "$tmp_ps1")" | tr -d '\r'
+  rm -f "$tmp_ps1"
 }
 
 wsl_windows_chrome_read_profile_port() {
@@ -336,7 +344,12 @@ PS1
 )
 
   ps="${ps//__ENDPOINT__/$escaped_endpoint}"
-  wsl_windows_chrome_powershell -Command "$ps" >/dev/null 2>&1
+
+  tmp_ps1=$(mktemp /tmp/wsl_windows_chrome_XXXXXX.ps1)
+  trap 'rm -f "$tmp_ps1"' EXIT
+  echo "$ps" >"$tmp_ps1"
+  wsl_windows_chrome_powershell -File "$(wslpath -w "$tmp_ps1")" >/dev/null 2>&1
+  rm -f "$tmp_ps1"
 }
 
 wsl_windows_chrome_wait_for_endpoint() {

@@ -5,6 +5,29 @@ description: Attach from WSL to a dedicated Windows Chrome or Edge automation br
 
 # WSL Windows Chrome
 
+## 强制规则：禁止 fallback 浏览器
+
+当连接 Windows Chrome 的 Skill 连接不上 Windows 侧 Chrome CDP 时，禁止在 WSL 里启动或使用 Playwright 自带浏览器、fresh playwright-cli browser、bundled chromium 或任何 fallback browser。
+
+原因：
+这些浏览器不会复用 Windows Chrome 的登录状态，对 Telegram Web、BotFather、已登录网页、账号态自动化无效。
+
+正确行为：
+Windows Chrome CDP 不可达时，必须立即停止，退出码非 0，并输出：
+- 当前检测端口
+- 当前尝试连接地址
+- 失败原因
+- Windows 侧 Chrome 启动命令
+- CDP 验证命令
+
+## 强制规则：PowerShell 调用
+
+在 WSL/Bash 中调用 Windows PowerShell 时：
+- 如果 PowerShell 代码中包含 $变量，禁止用 Bash 双引号直接包裹 -Command
+- 推荐写入临时 .ps1 文件后用 powershell.exe -File 执行
+- 如果必须使用 -Command，外层必须使用 Bash 单引号，或者转义所有 PowerShell $ 变量
+- 不允许出现 powershell.exe -Command "$port = ..." 这类写法
+
 ## Overview
 
 Prefer a dedicated Windows automation browser when working from WSL on browser tasks. The stable setup is:
@@ -14,7 +37,7 @@ Prefer a dedicated Windows automation browser when working from WSL on browser t
 3. Use a non-default `--user-data-dir` such as `C:\chrome-wsl-automation`
 4. Let WSL attach over CDP; do not try to reuse the default day-to-day profile
 
-Run the attach helper first. It tries `127.0.0.1:<port>`, then the WSL gateway host. If the requested port is unavailable but the dedicated profile advertises a different active port in `DevToolsActivePort`, the helper automatically switches to that port. It then starts a relay bound to the gateway host if direct access is still unavailable, and only then falls back to a fresh `playwright-cli` browser session.
+Run the attach helper first. It tries `127.0.0.1:<port>`, then the WSL gateway host. If the requested port is unavailable but the dedicated profile advertises a different active port in `DevToolsActivePort`, the helper automatically switches to that port. It then starts a relay bound to the gateway host if direct access is still unavailable. If all attempts fail, it exits with an error and diagnostic information — it will NOT fall back to a fresh browser session.
 
 ## Default Workflow
 
@@ -24,7 +47,7 @@ Run the attach helper first. It tries `127.0.0.1:<port>`, then the WSL gateway h
 4. Let the helper probe `127.0.0.1:<port>` first, then the WSL gateway host. If the requested port conflicts with another browser instance, let it fall back to the active port recorded in the dedicated profile.
 5. Let the helper start relay-assisted attach only if direct access is unavailable.
 6. If a `playwright-cli` session with the same name is already active, let the helper close that session before attach so stale-session collisions do not produce false success.
-7. If attach still fails, let the helper fall back to `playwright-cli open` and explicitly state that the browser is no longer reusing the Windows automation browser state.
+7. If attach still fails, the helper will exit with an error and diagnostic information — it will NOT fall back to a fresh browser session.
 
 ## Quick Start
 
@@ -50,8 +73,8 @@ bash scripts/attach_windows_logged_in_chrome.sh --port 9333 --user-data-dir 'C:\
 # Use Microsoft Edge instead of Chrome with a separate automation profile
 bash scripts/attach_windows_logged_in_chrome.sh --browser edge --session edge-auth --user-data-dir 'C:\edge-wsl-automation'
 
-# Require reuse of the dedicated Windows browser; do not open a fresh browser
-bash scripts/attach_windows_logged_in_chrome.sh --attach-only --session auth
+# (Default behavior) Require reuse of the dedicated Windows browser; do not open a fresh browser
+bash scripts/attach_windows_logged_in_chrome.sh --session auth
 
 # Print the raw CDP websocket endpoint for tools that connect directly
 bash scripts/print_windows_chrome_ws_endpoint.sh
@@ -66,7 +89,7 @@ bash scripts/stop_windows_chrome_cdp_relay.sh
 - Read [references/windows-chrome-cdp.md](references/windows-chrome-cdp.md) when attach fails and the troubleshooting or manual CDP flow is needed.
 - Use `scripts/print_windows_chrome_ws_endpoint.sh` when a tool needs the raw websocket endpoint instead of a high-level `playwright-cli attach` flow.
 - Assume the Windows automation browser is already running and logged in. This skill does not migrate cookies or profiles into WSL.
-- Treat fallback as a visible downgrade. State it before continuing with tasks that depend on an authenticated session.
+- There is NO fallback to fresh browser sessions. If CDP endpoint is not reachable, the helper will fail immediately with diagnostic information and setup instructions.
 - `powershell.exe` is discovered from PATH first, then from standard `/mnt/c/Windows/...` locations so `[interop] appendWindowsPath=false` does not block attach.
 - Relay-assisted attach uses a Windows PowerShell TCP relay and does not require Windows Node.js.
 - The default `playwright-cli` session name is `wsl-windows-chrome`, not the generic `default`, to reduce collisions with unrelated browser work.
@@ -86,7 +109,7 @@ bash scripts/stop_windows_chrome_cdp_relay.sh
   - `relay_cdp_ready`: relay endpoint answers `/json/version` from WSL
   - `preferred_mode`: the endpoint order currently selected for attach
 - For enterprise WeChat / WPS-style live tables, prefer:
-  1. `--attach-only --session <name>` to bind a stable session
+  1. `--session <name>` to bind a stable session
   2. `playwright-cli -s=<name> tab-list` and `tab-select` to focus the workbook page
   3. domain-specific tooling to inspect the live page after attach instead of reopening the URL in a fresh browser
 - The helper name `attach_windows_logged_in_chrome.sh` is retained for compatibility, but the recommended target is now a dedicated automation browser, not the day-to-day browser.
@@ -95,7 +118,7 @@ bash scripts/stop_windows_chrome_cdp_relay.sh
 
 ### scripts/
 
-- `attach_windows_logged_in_chrome.sh`: Prefer dedicated Windows automation browser attach; fall back to a fresh browser only when attach is unavailable.
+- `attach_windows_logged_in_chrome.sh`: Attach only to dedicated Windows automation browser; fail immediately if CDP endpoint is not reachable.
 - `print_windows_automation_browser_launcher.sh`: Print a Windows `.bat` launcher that starts the dedicated automation browser with a preferred CDP port, automatically choosing another free port if needed.
 - `print_windows_chrome_ws_endpoint.sh`: Print the direct or relay-backed websocket endpoint for raw CDP tools.
 - `start_windows_chrome_cdp_relay.sh`: Expose the Windows automation browser CDP port to WSL when direct host access is blocked.
@@ -104,3 +127,29 @@ bash scripts/stop_windows_chrome_cdp_relay.sh
 ### references/
 
 - `windows-chrome-cdp.md`: Troubleshooting and manual CDP flow for the dedicated Windows automation browser from WSL.
+
+## 验收测试说明
+
+### case-001: 9222 未启动
+
+期望：
+- 输出 CDP 不可达
+- 输出 Windows Chrome 启动命令
+- 退出码非 0
+- 不启动 Playwright 自带浏览器
+- 不输出 Falling back to fresh playwright-cli browser
+
+### case-002: 9222 已启动
+
+期望：
+- 能读取 /json/version
+- 能拿到 webSocketDebuggerUrl
+- 能 attach 到 Windows Chrome
+- 不启动新的 Playwright 默认浏览器
+
+### case-003: PowerShell 端口检测
+
+期望：
+- 不出现 Missing expression after ','
+- 不出现 An expression was expected after '('
+- $port 不会被 Bash 展开为空

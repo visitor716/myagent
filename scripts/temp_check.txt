@@ -1,0 +1,60 @@
+# Ensure UTF-8 encoding for this script/session
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+#
+Unblock-File -Path "D:\Development\Script\Test\task-action.py"
+# ����һ��ÿ������ 8:00 ���еļƻ�����һ�ܺ����
+
+# ��������
+$taskName = "DailyMorningTask"
+
+# ����ʱ��
+${taskTime} = "18:30"
+
+# ����·��
+${taskPath} = "D:\Development\Script\Test\task-action.py"
+
+# �������ͬ�������ȳ���ɾ���Ա���ע��ʱ������ɾ��������Ҫ����ԱȨ�ޣ�
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+    try {
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
+        Write-Host "��⵽�������� '$taskName'���ѳ���ɾ����������ע�ᡣ"
+    } catch {
+        Write-Warning "��⵽���� '$taskName' �Ѵ��ڣ����޷�ɾ����$($_.Exception.Message)"
+        Write-Host "�����Ҫ���������������ù���ԱȨ�����д˽ű����ֶ�ɾ������������ԡ�"
+    }
+}
+# ������������ÿ�� 8:10 AM
+$trigger = New-ScheduledTaskTrigger -Daily -At ${taskTime}
+
+# ����������ڱ߽�Ϊ��ǰʱ�� +7 ������� 23:59:59
+$trigger.EndBoundary = (Get-Date).AddDays(7).ToString("yyyy-MM-ddT23:59:59")
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"${taskPath}`""
+
+# ���壺ʹ�õ�ǰ�û����У������ҪϵͳȨ�ޣ����޸�Ϊ -GroupId 'BUILTIN\Administrators' -RunLevel Highest��
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Highest
+
+# ���ã������ڵ�������еȣ���ѡ������
+# ע�⣺-AllowStartIfOnBatteries �� -DontStopIfGoingOnBatteries �� switch ������Ӧ��Ϊ���ش��ݣ����� $true��
+# ���ã������ڵ�������еȣ���ѡ������
+# ע�⣺-AllowStartIfOnBatteries �� -DontStopIfGoingOnBatteries �� switch ������Ӧ��Ϊ���ش��ݣ����� $true��
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+
+# �����Լ�飺ȷ����Ҫ����ѳɹ�����
+if (-not $action) { Write-Error "������($action) δ�������޷�������"; exit 1 }
+if (-not $trigger) { Write-Error "������($trigger) δ�������޷�������"; exit 1 }
+if (-not $settings) { Write-Error "����($settings) δ�������޷�������"; exit 1 }
+if (-not $principal) { Write-Error "����($principal) δ�������޷�������"; exit 1 }
+
+# �����������
+$task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal
+
+# ע��������Ҫ����ԱȨ�ޣ�
+try {
+    Register-ScheduledTask -TaskName $taskName -InputObject $task -ErrorAction Stop
+    Write-Host "���� '$taskName' �Ѵ�����ÿ�� ${taskTime} ���У�һ�ܺ���ڡ�"
+} catch {
+    Write-Warning "�޷�ע��ƻ�����$($_.Exception.Message)"
+    Write-Host "��������Ѵ�������ע��ʧ�ܣ�������Ҫ����ԱȨ�ޣ�����ʹ�ù���Ա PowerShell �ֶ����У�Register-ScheduledTask -TaskName $taskName -InputObject <task>"
+}

@@ -41,6 +41,13 @@ fi
 
 RELAY_KEY="$(wsl_windows_chrome_relay_key "$BIND_HOST" "$LISTEN_PORT" "$TARGET_PORT")"
 
+# Check if relay is already reachable
+if wsl_windows_chrome_endpoint_reachable "$BIND_HOST" "$LISTEN_PORT"; then
+  echo "Relay already active on $BIND_HOST:$LISTEN_PORT"
+  echo "Connect browser CDP via: http://$BIND_HOST:$LISTEN_PORT/json/version"
+  exit 0
+fi
+
 cat <<'INFO'
 Starting a Windows-local TCP relay so WSL can reach the automation browser CDP port.
 This helper writes a small PowerShell relay into %USERPROFILE%\.codex\wsl-windows-chrome and launches it hidden.
@@ -148,7 +155,11 @@ PS_SCRIPT="${PS_SCRIPT//__TARGET_PORT__/$TARGET_PORT}"
 PS_SCRIPT="${PS_SCRIPT//__BIND_HOST__/$(wsl_windows_chrome_escape_ps_single_quote "$BIND_HOST")}"
 PS_SCRIPT="${PS_SCRIPT//__RELAY_KEY__/$RELAY_KEY}"
 
-wsl_windows_chrome_powershell -Command "$PS_SCRIPT" >/dev/null
+tmp_ps1=$(mktemp /tmp/wsl_windows_chrome_XXXXXX.ps1)
+trap 'rm -f "$tmp_ps1"' EXIT
+echo "$PS_SCRIPT" >"$tmp_ps1"
+wsl_windows_chrome_powershell -File "$(wslpath -w "$tmp_ps1")" >/dev/null
+rm -f "$tmp_ps1"
 
 if ! wsl_windows_chrome_wait_for_endpoint "$BIND_HOST" "$LISTEN_PORT" 5 0.2; then
   echo "Relay did not become reachable on $BIND_HOST:$LISTEN_PORT." >&2
