@@ -1,4 +1,4 @@
 interface:
   display_name: "WSL Windows Chrome"
   short_description: "Attach from WSL to a dedicated Windows automation browser."
-  default_prompt: "Use $wsl-windows-chrome to attach from WSL to the dedicated Windows Chrome or Edge automation browser before opening a fresh browser."
+  default_prompt: "In any project, use $wsl-windows-chrome first whenever an agent needs to connect to Windows Chrome, preserve authenticated browser state, or automate a logged-in Windows-side page."

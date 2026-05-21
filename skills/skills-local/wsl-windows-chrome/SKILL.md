@@ -1,9 +1,13 @@
 ---
 name: wsl-windows-chrome
-description: Attach from WSL to a dedicated Windows Chrome or Edge automation browser that exposes a fixed CDP port with a non-default user-data-dir. Use when Codex needs authenticated browser state without reusing the day-to-day Windows browser profile.
+description: Attach from WSL to a dedicated Windows Chrome or Edge automation browser that exposes a fixed CDP port with a non-default user-data-dir. In any project, use this skill first whenever an agent needs to connect to Windows Chrome, preserve authenticated browser state, or automate a logged-in Windows-side page.
 ---
 
 # WSL Windows Chrome
+
+## 全局路由偏好
+
+以后任何项目中，只要任务需要 agent 连接 Windows Chrome、复用 Windows 侧登录态、操作已登录网页，或从 WSL 自动化浏览器，优先使用 `wsl-windows-chrome`。不要先开 WSL/Linux 内的新浏览器来试。
 
 ## 强制规则：禁止 fallback 浏览器
 
@@ -86,11 +90,14 @@ bash scripts/stop_windows_chrome_cdp_relay.sh
 ## Operating Notes
 
 - Keep `playwright-cli` as the control surface after attach. Use `playwright-cli -s=<session> snapshot`, `click`, `fill`, `goto`, and related commands normally.
+- If `playwright-cli attach` is unnecessary or unstable, use raw CDP first: probe `http://127.0.0.1:<port>/json/version`, list tabs with `/json/list`, select the target page websocket, then attach through the browser websocket or inspect current tabs before navigating.
+- For logged-in enterprise apps, prefer focusing the existing tab over reopening the URL. Use `playwright-cli -s=<session> tab-list` and `tab-select <index>` so the active request/page state is preserved.
 - Read [references/windows-chrome-cdp.md](references/windows-chrome-cdp.md) when attach fails and the troubleshooting or manual CDP flow is needed.
 - Use `scripts/print_windows_chrome_ws_endpoint.sh` when a tool needs the raw websocket endpoint instead of a high-level `playwright-cli attach` flow.
 - Assume the Windows automation browser is already running and logged in. This skill does not migrate cookies or profiles into WSL.
 - There is NO fallback to fresh browser sessions. If CDP endpoint is not reachable, the helper will fail immediately with diagnostic information and setup instructions.
 - `powershell.exe` is discovered from PATH first, then from standard `/mnt/c/Windows/...` locations so `[interop] appendWindowsPath=false` does not block attach.
+- WSL gateway detection must avoid `ip route | awk '... exit'` under `set -o pipefail`; early `awk` exit can make `ip` return SIGPIPE/141 and abort otherwise healthy status checks.
 - Relay-assisted attach uses a Windows PowerShell TCP relay and does not require Windows Node.js.
 - The default `playwright-cli` session name is `wsl-windows-chrome`, not the generic `default`, to reduce collisions with unrelated browser work.
 - Relay binding defaults to the WSL gateway host instead of `0.0.0.0`. Override with `WSL_WINDOWS_CHROME_RELAY_BIND_HOST` only when you intentionally need a different bind address.

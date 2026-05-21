@@ -54,6 +54,19 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 - `图表列文件`: `光斑异常图表列-{date}.tsv`
 - `图表复制页`: `光斑异常图表复制-{date}.html`
 
+### Output directory troubleshooting
+
+- Runtime config `~/.tcp-daily-report-table.json` overrides the built-in `输出目录`. If files stop appearing in Obsidian, inspect this file first.
+- To restore Obsidian output, set it to:
+
+```json
+{
+  "output_dir": "D:\\Obsidian\\MyNote\\03.工作\\扬州晶澳F3日报表格自动化"
+}
+```
+
+- In WSL this resolves to `/mnt/d/Obsidian/MyNote/03.工作/扬州晶澳F3日报表格自动化`.
+
 ## Run The Script
 
 Script path:
@@ -206,6 +219,14 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 - Use `--write-mode all` to generate Markdown, TSV, and XLSX together.
 - TSV files are written as UTF-8 with BOM so Windows Excel/WPS/企业微信 can detect Chinese text correctly; existing no-BOM TSV files are upgraded on the next append.
 - Use the generated `.xlsx` workbook when TSV text is still pasted into one cell; XLSX is a real spreadsheet with fields split into cells.
+- Generated XLSX cells should be centered horizontally/vertically, use thin borders, enable automatic text wrapping, and set wider process columns for long Chinese descriptions.
+- When modifying or debugging XLSX output, verify the workbook internals instead of only checking that the file exists:
+  - workbook contains `xl/styles.xml`
+  - `xl/styles.xml` contains `<alignment horizontal="center" vertical="center" wrapText="1"/>`
+  - `xl/styles.xml` contains thin borders for left/right/top/bottom
+  - worksheet cells include `s="1"` style references
+  - long text columns such as `调试过程` and `处理说明` have wider `<col ... width="48" .../>` settings
+- If the user reports 光斑 Excel cells are not centered, missing borders, or not wrapping, regenerate only XLSX with `--write-mode xlsx` to avoid duplicate Markdown/TSV appends.
 - Use `--format wecom-html` when the user wants enterprise WeChat-friendly table layout. This saves a styled HTML file named like `企业微信日报-2026-04-18.html`, with `F3` rendered as a blue selected tag.
 - `--output-dir` supports both Windows paths like `D:\...` and WSL paths like `/mnt/d/...` on both Windows and WSL.
 - `--write-mode html` refreshes only the HTML file and skips note appends. Use this for style tweaks to avoid duplicate rows.

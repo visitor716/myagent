@@ -31,6 +31,7 @@ DEFAULTS = {
     'main_tsv_file': '每天日报.tsv',
     'spot_tsv_file': '光斑调试记录.tsv',
     'xlsx_file': '日报表格-{date}.xlsx',
+    'spot_xlsx_file': '光斑调试记录-{date}.xlsx',
     'wecom_html_file': '企业微信日报-{date}.html',
     'chart_column_file': '光斑异常图表列-{date}.tsv',
     'chart_copy_html_file': '光斑异常图表复制-{date}.html',
@@ -845,10 +846,58 @@ def write_wecom_html(file_path: Path, main_rows: list[list[str]], spot_rows: lis
     file_path.write_text(render_wecom_html(main_rows, spot_rows), encoding='utf-8')
 
 
+def xlsx_styles_xml() -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<fonts count="1"><font><sz val="11"/><name val="等线"/></font></fonts>'
+        '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
+        '<borders count="2">'
+        '<border><left/><right/><top/><bottom/><diagonal/></border>'
+        '<border>'
+        '<left style="thin"><color auto="1"/></left>'
+        '<right style="thin"><color auto="1"/></right>'
+        '<top style="thin"><color auto="1"/></top>'
+        '<bottom style="thin"><color auto="1"/></bottom>'
+        '<diagonal/>'
+        '</border>'
+        '</borders>'
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        '<cellXfs count="2">'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1" applyBorder="1">'
+        '<alignment horizontal="center" vertical="center" wrapText="1"/>'
+        '</xf>'
+        '</cellXfs>'
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+        '</styleSheet>'
+    )
+
+
 def render_xlsx_cell(row_index: int, col_index: int, value: str) -> str:
     cell_ref = f'{col_index_to_label(col_index)}{row_index}'
     text = escape_xml(clean_xlsx_text(value))
-    return f'<c r="{cell_ref}" t="inlineStr"><is><t>{text}</t></is></c>'
+    return f'<c r="{cell_ref}" s="1" t="inlineStr"><is><t>{text}</t></is></c>'
+
+
+def xlsx_column_width(header: str) -> int:
+    if header in ('调试过程', '处理说明'):
+        return 48
+    if header in ('异常现象', '问题复盘'):
+        return 22
+    if header in ('客户基地', '设备类型', '异常分类', '记录人员'):
+        return 14
+    if header in ('日期', '机台编号'):
+        return 12
+    return 10
+
+
+def render_xlsx_cols(headers: list[str]) -> str:
+    cols = []
+    for index, header in enumerate(headers, start=1):
+        width = xlsx_column_width(header)
+        cols.append(f'<col min="{index}" max="{index}" width="{width}" customWidth="1"/>')
+    return '<cols>' + ''.join(cols) + '</cols>'
 
 
 def render_xlsx_sheet(headers: list[str], rows: list[list[str]]) -> str:
@@ -860,7 +909,8 @@ def render_xlsx_sheet(headers: list[str], rows: list[list[str]]) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        '<sheetData>'
+        + render_xlsx_cols(headers)
+        + '<sheetData>'
         + ''.join(xml_rows)
         + '</sheetData></worksheet>'
     )
@@ -877,6 +927,7 @@ def write_xlsx_workbook(file_path: Path, main_rows: list[list[str]], spot_rows: 
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             '<Default Extension="xml" ContentType="application/xml"/>'
             '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
             '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
             '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
             '</Types>'
@@ -901,10 +952,54 @@ def write_xlsx_workbook(file_path: Path, main_rows: list[list[str]], spot_rows: 
             '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
             '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'
+            '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
             '</Relationships>'
         ),
         'xl/worksheets/sheet1.xml': render_xlsx_sheet(MAIN_HEADERS, main_rows),
         'xl/worksheets/sheet2.xml': render_xlsx_sheet(sheet2_headers, sheet2_rows),
+        'xl/styles.xml': xlsx_styles_xml(),
+    }
+    with zipfile.ZipFile(file_path, 'w', compression=zipfile.ZIP_DEFLATED) as workbook:
+        for name, content in files.items():
+            workbook.writestr(name, content)
+
+
+def write_spot_xlsx_workbook(file_path: Path, spot_rows: list[list[str]]) -> None:
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    files = {
+        '[Content_Types].xml': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '</Types>'
+        ),
+        '_rels/.rels': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>'
+        ),
+        'xl/workbook.xml': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets>'
+            '<sheet name="光斑调试记录" sheetId="1" r:id="rId1"/>'
+            '</sheets></workbook>'
+        ),
+        'xl/_rels/workbook.xml.rels': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            '</Relationships>'
+        ),
+        'xl/worksheets/sheet1.xml': render_xlsx_sheet(SPOT_HEADERS, spot_rows),
+        'xl/styles.xml': xlsx_styles_xml(),
     }
     with zipfile.ZipFile(file_path, 'w', compression=zipfile.ZIP_DEFLATED) as workbook:
         for name, content in files.items():
@@ -1122,6 +1217,11 @@ def persist_outputs(
     if write_xlsx:
         write_xlsx_workbook(xlsx_path, main_rows, spot_rows)
         saved_messages.append(f'已生成 Excel 表格: {display_path(xlsx_path)}')
+        if spot_rows:
+            spot_xlsx_file = metadata.get('spot_xlsx_file') or resolve_filename_template(DEFAULTS['spot_xlsx_file'], metadata['date'])
+            spot_xlsx_path = output_dir / spot_xlsx_file
+            write_spot_xlsx_workbook(spot_xlsx_path, spot_rows)
+            saved_messages.append(f'已生成光斑 Excel 表格: {display_path(spot_xlsx_path)}')
     else:
         saved_messages.append('已跳过 Excel 表格写入。')
 
@@ -1217,6 +1317,7 @@ def build_metadata(args: argparse.Namespace) -> dict[str, str]:
         'main_tsv_file': args.main_tsv_file,
         'spot_tsv_file': args.spot_tsv_file,
         'xlsx_file': resolve_filename_template(args.xlsx_file, args.date),
+        'spot_xlsx_file': resolve_filename_template(args.spot_xlsx_file, args.date),
         'wecom_html_file': resolve_filename_template(args.wecom_html_file, args.date),
         'chart_column_file': resolve_filename_template(args.chart_column_file, args.date),
         'chart_copy_html_file': resolve_filename_template(args.chart_copy_html_file, args.date),
@@ -1352,6 +1453,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--main-tsv-file', default=DEFAULTS['main_tsv_file'], help='日报 TSV 表格文件名。')
     parser.add_argument('--spot-tsv-file', default=DEFAULTS['spot_tsv_file'], help='光斑 TSV 表格文件名。')
     parser.add_argument('--xlsx-file', default=DEFAULTS['xlsx_file'], help='Excel 表格文件名。')
+    parser.add_argument('--spot-xlsx-file', default=DEFAULTS['spot_xlsx_file'], help='光斑 Excel 表格文件名。')
     parser.add_argument('--wecom-html-file', default=DEFAULTS['wecom_html_file'], help='企业微信 HTML 文件名。')
     parser.add_argument('--chart-column-file', default=DEFAULTS['chart_column_file'], help='图表列文件名。')
     parser.add_argument('--chart-copy-html-file', default=DEFAULTS['chart_copy_html_file'], help='图表复制页文件名。')

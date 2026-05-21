@@ -41,7 +41,7 @@ Use this reference when checking whether a reimbursement package is complete and
 
 ## Lodging
 
-- Lodging requires invoice, lodging detail bill from hotel front desk, order screenshot, and payment/preorder proof. Missing any one item is non-compliant.
+- Lodging normally requires invoice, lodging detail bill from hotel front desk, order screenshot, and payment/preorder proof. Missing any one item is non-compliant unless the OA lodging row clearly remarks `酒店前台付款` or an equivalent front-desk/offline payment note; in that case do not flag a missing online order screenshot.
 - Lodging should be paid online through Ctrip/Meituan or similar platforms unless there is a special case.
 - If staying alone because no one can share the room, add a remark. If sharing, fill in roommate information.
 - Standard lodging limit is 200 yuan per person; special circumstances require leader report/approval and a note.

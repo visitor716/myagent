@@ -59,7 +59,19 @@ wsl_windows_chrome_escape_ps_single_quote() {
 }
 
 wsl_windows_chrome_gateway() {
-  ip route | awk '/default/ {print $3; exit}'
+  local gateway
+
+  gateway="$(
+    ip -4 route show default 2>/dev/null |
+      awk '$1 == "default" && $3 != "" { if (gateway == "") gateway = $3 } END { if (gateway != "") print gateway }'
+  )" || true
+
+  if [[ -n "$gateway" ]]; then
+    printf '%s\n' "$gateway"
+    return 0
+  fi
+
+  awk '/^nameserver[[:space:]]+/ { print $2; exit }' /etc/resolv.conf 2>/dev/null || true
 }
 
 wsl_windows_chrome_browser_label() {

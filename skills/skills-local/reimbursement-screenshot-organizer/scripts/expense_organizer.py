@@ -11,9 +11,10 @@ import shutil
 import sys
 from collections import defaultdict
 from datetime import date, datetime, timezone
+from html import escape
 from pathlib import Path
 from typing import Any
-from zipfile import ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile
 
 
 IMAGE_EXTENSIONS = {
@@ -91,6 +92,32 @@ def main() -> int:
         help="Encoding for legacy ZIP filenames decoded as CP437 by Python. Default: gbk.",
     )
 
+    merge_parser = subparsers.add_parser(
+        "merge-itineraries",
+        help="Crop main content from itinerary PDFs and merge the crops into one Word document.",
+    )
+    merge_parser.add_argument("path", help="Directory containing itinerary PDFs, or one itinerary PDF file.")
+    merge_parser.add_argument(
+        "-o",
+        "--output",
+        help="Output DOCX path. Defaults to <path>/<date>_滴滴行程报销单合并.docx.",
+    )
+    merge_parser.add_argument(
+        "--image-dir",
+        help="Directory for cropped PNG images. Defaults to <path>/裁剪图片.",
+    )
+    merge_parser.add_argument(
+        "--glob",
+        default="*.pdf",
+        help="PDF filename glob when path is a directory. Default: *.pdf.",
+    )
+    merge_parser.add_argument(
+        "--scale",
+        type=float,
+        default=3.0,
+        help="PDF render scale for cropped images. Default: 3.",
+    )
+
     apply_parser = subparsers.add_parser("apply", help="Dry-run or execute a rename/classification plan.")
     apply_parser.add_argument("plan", help="Plan JSON path.")
     apply_parser.add_argument("--execute", action="store_true", help="Actually move or copy files.")
@@ -112,15 +139,44 @@ def main() -> int:
         help="Compliance report JSON output path. Defaults to <root>/expense-compliance-report.json.",
     )
 
+    merge_charts_parser = subparsers.add_parser("merge-charts", help="Merge comparison chart images into a single Word document.")
+    merge_charts_parser.add_argument("path", help="Directory containing comparison chart images.")
+    merge_charts_parser.add_argument(
+        "-o",
+        "--output",
+        help="Output DOCX path. Defaults to <path>/比价图汇总.docx.",
+    )
+    merge_charts_parser.add_argument(
+        "--title",
+        default="比价图汇总",
+        help="Document title. Default: 比价图汇总.",
+    )
+    merge_charts_parser.add_argument(
+        "--cols",
+        type=int,
+        default=2,
+        help="Number of columns in the image grid. Default: 2.",
+    )
+    merge_charts_parser.add_argument(
+        "--width",
+        type=float,
+        default=8.5,
+        help="Image width in cm. Default: 8.5.",
+    )
+
     args = parser.parse_args()
     if args.command == "inventory":
         return run_inventory(args)
     if args.command == "unpack":
         return run_unpack(args)
+    if args.command == "merge-itineraries":
+        return run_merge_itineraries(args)
     if args.command == "apply":
         return run_apply(args)
     if args.command == "check":
         return run_check(args)
+    if args.command == "merge-charts":
+        return run_merge_charts(args)
     parser.error("unknown command")
     return 2
 
@@ -178,6 +234,293 @@ def run_unpack(args: argparse.Namespace) -> int:
     print(f"Extracted files: {len(operations)}")
     for operation in operations:
         print(f"- {operation['zip']}:{operation['member']} -> {operation['destination']}")
+    return 0
+
+
+def run_merge_itineraries(args: argparse.Namespace) -> int:
+    source_path = Path(args.path).expanduser().resolve()
+    pdf_paths = itinerary_pdf_paths(source_path, args.glob)
+    if not pdf_paths:
+        raise SystemExit(f"No itinerary PDFs found: {source_path}")
+    if args.scale <= 0:
+        raise SystemExit("--scale must be greater than 0.")
+
+    output_base = source_path.parent if source_path.is_file() else source_path
+    output_path = Path(args.output).expanduser().resolve() if args.output else default_itinerary_docx_path(output_base, pdf_paths)
+    image_dir = Path(args.image_dir).expanduser().resolve() if args.image_dir else output_base / "裁剪图片"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    crops = [crop_itinerary_pdf(pdf_path, image_dir, args.scale) for pdf_path in pdf_paths]
+    write_itinerary_docx(output_path, crops)
+
+    print(f"Cropped itinerary PDFs: {len(crops)}")
+    for crop in crops:
+        print(f"- {crop['source']} -> {crop['image']}")
+    print(f"Wrote Word document: {output_path}")
+    return 0
+
+
+def itinerary_pdf_paths(source_path: Path, pattern: str) -> list[Path]:
+    if source_path.is_file():
+        if source_path.suffix.lower() != ".pdf":
+            raise SystemExit(f"Not a PDF file: {source_path}")
+        return [source_path]
+    if source_path.is_dir():
+        return sorted(path for path in source_path.glob(pattern) if path.is_file() and path.suffix.lower() == ".pdf")
+    raise SystemExit(f"Path not found: {source_path}")
+
+
+def default_itinerary_docx_path(directory: Path, pdf_paths: list[Path]) -> Path:
+    prefix = first_date_prefix(pdf_paths)
+    filename = f"{prefix}_滴滴行程报销单合并.docx" if prefix else "滴滴行程报销单合并.docx"
+    return unique_destination(directory, filename)
+
+
+def first_date_prefix(paths: list[Path]) -> str:
+    for path in paths:
+        normalized = normalize_date(path.stem)
+        if normalized != "日期未知":
+            return normalized
+    return ""
+
+
+def crop_itinerary_pdf(pdf_path: Path, image_dir: Path, scale: float) -> dict[str, Any]:
+    try:
+        import fitz  # type: ignore
+    except Exception as exc:
+        raise SystemExit(
+            "PyMuPDF (fitz) is required for merge-itineraries. "
+            "Use the PDF environment that has fitz installed or install pymupdf."
+        ) from exc
+
+    with fitz.open(pdf_path) as document:
+        if document.page_count < 1:
+            raise SystemExit(f"PDF has no pages: {pdf_path}")
+        page = document[0]
+        clip = itinerary_content_rect(page)
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), clip=clip, alpha=False)
+        image_name = sanitize_path_part(pdf_path.stem, "行程单", limit=120) + "_裁剪.png"
+        image_path = unique_destination(image_dir, image_name)
+        pixmap.save(image_path)
+
+    return {
+        "source": str(pdf_path),
+        "title": pdf_path.stem,
+        "image": str(image_path),
+        "image_path": image_path,
+        "width": int(pixmap.width),
+        "height": int(pixmap.height),
+    }
+
+
+def itinerary_content_rect(page: Any) -> Any:
+    try:
+        import fitz  # type: ignore
+    except Exception as exc:
+        raise SystemExit(
+            "PyMuPDF (fitz) is required for merge-itineraries. "
+            "Use the PDF environment that has fitz installed or install pymupdf."
+        ) from exc
+
+    blocks = []
+    for block in page.get_text("blocks"):
+        if len(block) < 5:
+            continue
+        text = str(block[4]).strip()
+        if not text or "页码" in text or re.search(r"第\s*\d+\s*页", text):
+            continue
+        blocks.append(fitz.Rect(block[:4]))
+
+    page_rect = page.rect
+    if not blocks:
+        return page_rect
+
+    x0 = min(block.x0 for block in blocks)
+    y0 = min(block.y0 for block in blocks)
+    x1 = max(block.x1 for block in blocks)
+    y1 = max(block.y1 for block in blocks)
+    return fitz.Rect(
+        max(page_rect.x0, x0 - 22),
+        max(page_rect.y0, y0 - 18),
+        min(page_rect.x1, x1 + 22),
+        min(page_rect.y1, y1 + 26),
+    )
+
+
+def write_itinerary_docx(output_path: Path, crops: list[dict[str, Any]]) -> None:
+    rels_xml = document_relationships_xml(crops)
+    document_xml = itinerary_document_xml(crops)
+    with ZipFile(output_path, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types_xml())
+        archive.writestr("_rels/.rels", root_relationships_xml())
+        archive.writestr("word/document.xml", document_xml)
+        archive.writestr("word/_rels/document.xml.rels", rels_xml)
+        for index, crop in enumerate(crops, start=1):
+            archive.write(crop["image_path"], f"word/media/image{index}.png")
+
+
+def content_types_xml() -> str:
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>
+"""
+
+
+def root_relationships_xml() -> str:
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>
+"""
+
+
+def document_relationships_xml(crops: list[dict[str, Any]]) -> str:
+    relationships = [
+        f'  <Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image{index}.png"/>'
+        for index, _ in enumerate(crops, start=1)
+    ]
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
+        + "\n".join(relationships)
+        + "\n</Relationships>\n"
+    )
+
+
+def itinerary_document_xml(crops: list[dict[str, Any]]) -> str:
+    body_parts = []
+    for index, crop in enumerate(crops, start=1):
+        body_parts.append(title_paragraph(crop["title"]))
+        body_parts.append(image_paragraph(index, crop))
+        if index != len(crops):
+            body_parts.append('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">\n'
+        "<w:body>\n"
+        + "\n".join(body_parts)
+        + '\n<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>\n'
+        "</w:body>\n"
+        "</w:document>\n"
+    )
+
+
+def title_paragraph(title: str) -> str:
+    return (
+        "<w:p><w:pPr><w:spacing w:after=\"160\"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val=\"24\"/></w:rPr>"
+        f"<w:t>{escape(title)}</w:t></w:r></w:p>"
+    )
+
+
+def image_paragraph(index: int, crop: dict[str, Any]) -> str:
+    cx, cy = image_emu_dimensions(crop["width"], crop["height"])
+    name = escape(str(crop["title"]))
+    return f"""<w:p><w:r><w:drawing>
+<wp:inline distT="0" distB="0" distL="0" distR="0">
+  <wp:extent cx="{cx}" cy="{cy}"/>
+  <wp:docPr id="{index}" name="{name}"/>
+  <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>
+  <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+    <pic:pic>
+      <pic:nvPicPr><pic:cNvPr id="{index}" name="{name}.png"/><pic:cNvPicPr/></pic:nvPicPr>
+      <pic:blipFill><a:blip r:embed="rId{index}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+      <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+    </pic:pic>
+  </a:graphicData></a:graphic>
+</wp:inline>
+</w:drawing></w:r></w:p>"""
+
+
+def image_emu_dimensions(width: int, height: int) -> tuple[int, int]:
+    emu_per_pixel = 9525
+    max_width_emu = int(6.3 * 914400)
+    native_width = max(1, int(width)) * emu_per_pixel
+    native_height = max(1, int(height)) * emu_per_pixel
+    if native_width <= max_width_emu:
+        return native_width, native_height
+    ratio = max_width_emu / native_width
+    return max_width_emu, int(native_height * ratio)
+
+
+def run_merge_charts(args: argparse.Namespace) -> int:
+    source_path = Path(args.path).expanduser().resolve()
+    if not source_path.is_dir():
+        raise SystemExit(f"Not a directory: {source_path}")
+
+    images = sorted(
+        [f for f in source_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
+    )
+    if not images:
+        raise SystemExit(f"No images found in: {source_path}")
+
+    output_path = (
+        Path(args.output).expanduser().resolve()
+        if args.output
+        else source_path / "比价图汇总.docx"
+    )
+    title = args.title or "比价图汇总"
+    cols = max(1, min(6, args.cols))
+    width_cm = max(3.0, min(16.0, args.width))
+
+    try:
+        from docx import Document  # type: ignore
+        from docx.shared import Cm, Pt  # type: ignore
+        from docx.enum.text import WD_ALIGN_PARAGRAPH  # type: ignore
+        from docx.enum.table import WD_TABLE_ALIGNMENT  # type: ignore
+    except ImportError:
+        raise SystemExit("python-docx 未安装，请运行: pip install --break-system-packages python-docx")
+
+    doc = Document()
+    for section in doc.sections:
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+        section.left_margin = Cm(1.5)
+        section.right_margin = Cm(1.5)
+
+    title_para = doc.add_paragraph()
+    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_run = title_para.add_run(title)
+    title_run.font.size = Pt(14)
+    title_run.font.bold = True
+    title_para.paragraph_format.space_after = Pt(8)
+
+    rows = (len(images) + cols - 1) // cols
+    table = doc.add_table(rows=rows, cols=cols)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = True
+
+    for i, img_path in enumerate(images):
+        row = i // cols
+        col = i % cols
+        cell = table.rows[row].cells[col]
+
+        cell.paragraphs[0].clear()
+        label_para = cell.paragraphs[0]
+        label_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        label_run = label_para.add_run(f"图片 {i + 1}")
+        label_run.font.size = Pt(9)
+        label_para.paragraph_format.space_after = Pt(3)
+
+        img_para = cell.add_paragraph()
+        img_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        img_run = img_para.add_run()
+        img_run.add_picture(str(img_path), width=Cm(width_cm))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+
+    print(f"已生成: {output_path}")
+    print(f"布局: {rows}行 × {cols}列，包含 {len(images)} 张图片")
     return 0
 
 
@@ -246,6 +589,9 @@ def run_apply(args: argparse.Namespace) -> int:
                 "print_note": op.get("print_note"),
                 "confidence": op.get("confidence"),
                 "notes": op.get("notes"),
+                "benchmark_price": op.get("benchmark_price"),
+                "benchmark_note": op.get("benchmark_note"),
+                "reimbursement_amount": op.get("reimbursement_amount"),
             }
             for op in operations
         ],
@@ -287,8 +633,9 @@ def run_check(args: argparse.Namespace) -> int:
         claim_id = str(item.get("claim_id") or "").strip() or f"item-{index}"
         groups[claim_id].append((index, item))
 
+    valid_items = [item for item in raw_items if isinstance(item, dict)]
     for claim_id, group_items in groups.items():
-        findings.extend(check_claim_group(claim_id, group_items))
+        findings.extend(check_claim_group(claim_id, group_items, valid_items))
 
     if raw_items and not any(infer_evidence_types(item) & {"reimbursement_cover", "expense_form"} for item in raw_items):
         findings.append(
@@ -424,6 +771,9 @@ def build_operation(root: Path, item: dict[str, Any], index: int) -> dict[str, A
         "print_note": print_requirement["print_note"],
         "confidence": item.get("confidence"),
         "notes": item.get("notes"),
+        "benchmark_price": item.get("benchmark_price"),
+        "benchmark_note": item.get("benchmark_note"),
+        "reimbursement_amount": item.get("reimbursement_amount"),
     }
 
 
@@ -480,12 +830,15 @@ def check_item(root: Path, item: dict[str, Any], index: int) -> list[dict[str, A
     return results
 
 
-def check_claim_group(claim_id: str, group_items: list[tuple[int, dict[str, Any]]]) -> list[dict[str, Any]]:
+def check_claim_group(claim_id: str, group_items: list[tuple[int, dict[str, Any]]], plan_items: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     items = [item for _, item in group_items]
     evidence = set().union(*(infer_evidence_types(item) for item in items))
     kind = infer_group_expense_kind(items)
     target = f"claim:{claim_id}"
+
+    benchmark_results = check_claim_benchmark(target, items)
+    results.extend(benchmark_results)
 
     if kind == "transport":
         if "invoice" not in evidence and "taxi_machine_receipt" not in evidence:
@@ -496,12 +849,13 @@ def check_claim_group(claim_id: str, group_items: list[tuple[int, dict[str, Any]
             results.append(finding("warning", "transport.taxi_itinerary", "Machine-printed taxi ticket needs a printed self-made itinerary table.", target=target))
 
     if kind == "lodging":
-        required = {
+        required: dict[str, str] = {
             "invoice": "hotel invoice",
             "lodging_detail": "lodging detail bill from hotel front desk",
-            "order_screenshot": "online order screenshot",
             "payment_proof": "payment/preorder proof",
         }
+        if not lodging_front_desk_payment_documented(items, plan_items or []):
+            required["order_screenshot"] = "online order screenshot"
         for evidence_type, label in required.items():
             if evidence_type not in evidence:
                 results.append(finding("error", f"lodging.{evidence_type}", f"Lodging claim is missing {label}.", target=target))
@@ -536,6 +890,43 @@ def check_claim_group(claim_id: str, group_items: list[tuple[int, dict[str, Any]
         if "文件" in text and fee_type and "办公费" not in fee_type:
             results.append(finding("warning", "express.office_fee", "Mailing documents should use 办公费.", target=target))
 
+    return results
+
+
+def check_claim_benchmark(target: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Check whether claim total exceeds comparison chart benchmark price."""
+    results: list[dict[str, Any]] = []
+    benchmark_value = None
+    benchmark_note = ""
+    total_amount = 0.0
+    has_benchmark = False
+
+    for item in items:
+        amount = parse_amount_value(item.get("amount"))
+        if amount is not None:
+            total_amount += amount
+        bp = item.get("benchmark_price")
+        if bp is not None and str(bp).strip():
+            has_benchmark = True
+            parsed = parse_amount_value(bp)
+            if parsed is not None and (benchmark_value is None or parsed < benchmark_value):
+                benchmark_value = parsed
+                benchmark_note = str(item.get("benchmark_note") or "").strip()
+
+    if not has_benchmark or benchmark_value is None:
+        return results
+
+    reimbursement = min(total_amount, benchmark_value)
+    if total_amount > benchmark_value:
+        reduction = total_amount - benchmark_value
+        results.append(
+            finding(
+                "warning",
+                "benchmark.exceeds",
+                f"Claim total ¥{total_amount:.2f} exceeds benchmark price ¥{benchmark_value:.2f} (比价图标准价); reimbursable amount ¥{reimbursement:.2f}, reduction ¥{reduction:.2f}. {benchmark_note}".rstrip(),
+                target=target,
+            )
+        )
     return results
 
 
@@ -582,6 +973,48 @@ def check_lodging_amounts(target: str, items: list[dict[str, Any]]) -> list[dict
             )
         ]
     return []
+
+
+def lodging_front_desk_payment_documented(items: list[dict[str, Any]], plan_items: list[dict[str, Any]]) -> bool:
+    text_fields = [
+        "oa_remark",
+        "oa_remarks",
+        "remark",
+        "remarks",
+        "memo",
+        "purpose",
+        "notes",
+        "document_type",
+    ]
+    group_text_value = group_text(items, text_fields)
+    if has_front_desk_payment_phrase(group_text_value):
+        return True
+
+    oa_items = [
+        item
+        for item in plan_items
+        if infer_evidence_types(item) & {"reimbursement_cover", "expense_form"}
+    ]
+    return has_front_desk_payment_phrase(group_text(oa_items, text_fields))
+
+
+def has_front_desk_payment_phrase(text: str) -> bool:
+    normalized = re.sub(r"\s+", "", text)
+    if any(word in normalized for word in ("未写酒店前台付款", "未备注酒店前台付款", "没有写酒店前台付款")):
+        return False
+    return any(
+        word in normalized
+        for word in (
+            "酒店前台付款",
+            "酒店前台支付",
+            "前台付款",
+            "前台支付",
+            "到店付",
+            "到店付款",
+            "现场付款",
+            "线下付款",
+        )
+    )
 
 
 def normalize_category(value: Any) -> str:
@@ -755,6 +1188,12 @@ def infer_expense_kind(item: dict[str, Any]) -> str:
         "meal": "meal",
         "food": "meal",
         "餐饮": "meal",
+        "other": "other",
+        "misc": "other",
+        "其他": "other",
+        "报销单": "other",
+        "报销资料": "other",
+        "expense_form": "other",
     }
     if normalized in aliases:
         return aliases[normalized]
@@ -787,6 +1226,8 @@ def infer_group_expense_kind(items: list[dict[str, Any]]) -> str:
 
 
 def is_electronic_invoice(item: dict[str, Any]) -> bool:
+    if "invoice" not in infer_evidence_types(item) and normalize_category(item.get("category")) != "01-发票":
+        return False
     text = " ".join(str(item.get(field) or "") for field in ("document_type", "invoice_type", "notes"))
     return "电子" in text and "发票" in text
 

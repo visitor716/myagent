@@ -28,7 +28,8 @@ Use these normalized categories in the plan JSON when possible:
 7. `evidence_type`: attachment role for compliance checks. Use `invoice`, `itinerary`, `self_made_itinerary`, `payment_proof`, `order_screenshot`, `lodging_detail`, `warehouse_slip`, `reimbursement_cover`, or `expense_form`. Use `evidence_types` when one file has multiple roles.
 8. `claim_id`: same value for files that belong to one expense/transaction.
 9. `expense_kind`: one of `transport`, `lodging`, `purchase`, `express`, `meal`, `other`.
-10. `confidence`:
+10. `oa_remarks`: OA reimbursement detail-row remarks when visible. For lodging, preserve phrases such as `酒店前台付款`, `前台付款`, `到店付`, or `现场付款`; these phrases explain why an online order screenshot may be absent.
+11. `confidence`:
    - `high`: date, merchant, amount, and type are readable.
    - `medium`: one non-critical field is inferred from context.
    - `low`: key fields are missing, ambiguous, or unreadable.
@@ -68,6 +69,8 @@ Examples:
 
 Use short names. Avoid adding invoice codes, order IDs, or long descriptions unless they are necessary to distinguish multiple files with the same date, merchant, and amount. The script adds numeric suffixes when a destination filename already exists.
 
+For transport post-processing requests such as numbering railway e-tickets, Didi itinerary PDFs, or comparison chart screenshots by travel time, use `references/transport-filename-rules.md` instead of the generic filename shape above.
+
 ## Ambiguity Handling
 
 - If one image contains both an invoice and a payment confirmation, classify by the dominant reimbursement evidence. Official invoice wins over payment screenshot.
@@ -78,3 +81,13 @@ Use short names. Avoid adding invoice codes, order IDs, or long descriptions unl
 - For railway e-ticket PDFs, classify as `invoice` and set `evidence_types: ["invoice", "itinerary"]` because the file contains both invoice and travel evidence.
 - For Didi invoice mail, classify `滴滴电子发票.pdf` as `invoice` and `滴滴出行行程报销单.pdf` as `transport`; assign both files the same `claim_id`.
 - For modern all-digital/electronic invoices that visibly provide only a `发票号码`, set `invoice_number` and put `invoice_code` as `无（票面仅显示发票号码）` rather than leaving it blank.
+
+## Comparison Chart Benchmark
+
+When a comparison chart (比价图) shows a reference price for a trip route, use it as the reimbursement cap:
+
+- Set `benchmark_price` to the comparison chart reference price, e.g. `"288.00"`.
+- Set `benchmark_note` to describe which comparison chart and route was used.
+- When multiple items share a `claim_id`, the `check` command finds the smallest `benchmark_price` in the group and compares the claim total against it.
+- If the claim total exceeds the benchmark, the `check` command reports the reimbursable amount (capped at benchmark) and the reduction.
+- If a claim has no route matching any comparison chart, use the available comparison chart price for the same trip direction (outbound/return) as the benchmark.

@@ -1,7 +1,7 @@
 interface:
   display_name: "报销截图整理"
-  short_description: "整理报销截图、PDF 和邮箱附件并核对规范"
-  default_prompt: "Use $reimbursement-screenshot-organizer to organize reimbursement screenshots, PDFs, and downloaded email attachments by content, rename them, classify them into expense folders, and check reimbursement compliance."
+  short_description: "整理报销资料、命名凭证并辅助 OA"
+  default_prompt: "Use $reimbursement-screenshot-organizer to organize reimbursement screenshots, PDFs, and downloaded email attachments by content, rename and number transport evidence such as train tickets, Didi itineraries, and comparison charts, classify files into expense folders, crop and merge itinerary PDFs into Word when requested, check reimbursement compliance, generate copy-ready OA travel and invoice-number tables, and browser-fill OA fields without saving/submitting when explicitly requested."
 
 policy:
   allow_implicit_invocation: true

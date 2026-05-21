@@ -55,11 +55,20 @@ curl http://127.0.0.1:9222/json/version
 4. If that fails, probe the Windows host IP from WSL:
 
 ```bash
-GW=$(ip route | awk '/default/ {print $3; exit}')
+GW="$(ip -4 route show default | awk '$1 == "default" && $3 != "" { if (gateway == "") gateway = $3 } END { print gateway }')"
 curl "http://$GW:9222/json/version"
 ```
 
 If one of those returns JSON, the CDP HTTP endpoint is reachable and the helper should be able to derive the websocket endpoint.
+Avoid `ip route | awk '... exit'` in scripts that run with `set -o pipefail`; early `awk` exit can close the pipe while `ip` is still writing, producing exit code 141.
+
+5. List current tabs before reopening an authenticated URL:
+
+```bash
+curl "http://127.0.0.1:9222/json/list"
+```
+
+For SPA enterprise pages, use the existing tab's websocket/page state when possible. Reopening the same URL can lose transient hash parameters, form dirty state, or logged-in navigation context.
 
 ## Manual Recovery Flow
 

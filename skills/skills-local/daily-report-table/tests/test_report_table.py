@@ -351,6 +351,7 @@ class ReportTableTests(unittest.TestCase):
             main_tsv = Path(temp_dir) / '每天日报.tsv'
             spot_tsv = Path(temp_dir) / '光斑调试记录.tsv'
             xlsx_file = Path(temp_dir) / '日报表格-2026-04-16.xlsx'
+            spot_xlsx_file = Path(temp_dir) / '光斑调试记录-2026-04-16.xlsx'
 
             main_content = main_note.read_text(encoding='utf-8')
             spot_content = spot_note.read_text(encoding='utf-8')
@@ -367,10 +368,25 @@ class ReportTableTests(unittest.TestCase):
             self.assertIn('F3\t4月16号\t9B\tAC\t光斑破洞\t处理过程2\t詹香平\t', spot_tsv_content)
             self.assertTrue(xlsx_file.exists())
             with zipfile.ZipFile(xlsx_file) as workbook:
+                workbook_names = workbook.namelist()
                 sheet_xml = workbook.read('xl/worksheets/sheet1.xml').decode('utf-8')
-            self.assertIn('<c r="A1" t="inlineStr"><is><t>日期</t></is></c>', sheet_xml)
-            self.assertIn('<c r="B1" t="inlineStr"><is><t>组别</t></is></c>', sheet_xml)
-            self.assertIn('<c r="C1" t="inlineStr"><is><t>客户基地</t></is></c>', sheet_xml)
+                styles_xml = workbook.read('xl/styles.xml').decode('utf-8')
+            self.assertIn('xl/styles.xml', workbook_names)
+            self.assertIn('<alignment horizontal="center" vertical="center" wrapText="1"/>', styles_xml)
+            self.assertIn('<left style="thin"><color auto="1"/></left>', styles_xml)
+            self.assertIn('<c r="A1" s="1" t="inlineStr"><is><t>日期</t></is></c>', sheet_xml)
+            self.assertIn('<c r="B1" s="1" t="inlineStr"><is><t>组别</t></is></c>', sheet_xml)
+            self.assertIn('<c r="C1" s="1" t="inlineStr"><is><t>客户基地</t></is></c>', sheet_xml)
+            self.assertTrue(spot_xlsx_file.exists())
+            with zipfile.ZipFile(spot_xlsx_file) as workbook:
+                spot_workbook_names = workbook.namelist()
+                spot_sheet_xml = workbook.read('xl/worksheets/sheet1.xml').decode('utf-8')
+                spot_styles_xml = workbook.read('xl/styles.xml').decode('utf-8')
+            self.assertIn('xl/styles.xml', spot_workbook_names)
+            self.assertIn('<alignment horizontal="center" vertical="center" wrapText="1"/>', spot_styles_xml)
+            self.assertIn('<bottom style="thin"><color auto="1"/></bottom>', spot_styles_xml)
+            self.assertIn('<col min="6" max="6" width="48" customWidth="1"/>', spot_sheet_xml)
+            self.assertIn('<c r="F2" s="1" t="inlineStr"><is><t>处理过程2</t></is></c>', spot_sheet_xml)
 
     def test_tsv_write_mode_only_writes_tsv_tables(self) -> None:
         metadata = {
@@ -443,9 +459,12 @@ class ReportTableTests(unittest.TestCase):
             with zipfile.ZipFile(xlsx_file) as workbook:
                 workbook_names = workbook.namelist()
                 sheet_xml = workbook.read('xl/worksheets/sheet1.xml').decode('utf-8')
+                styles_xml = workbook.read('xl/styles.xml').decode('utf-8')
             self.assertIn('xl/workbook.xml', workbook_names)
-            self.assertIn('<c r="A2" t="inlineStr"><is><t>2026/4/16</t></is></c>', sheet_xml)
-            self.assertIn('<c r="B2" t="inlineStr"><is><t>罗威组</t></is></c>', sheet_xml)
+            self.assertIn('xl/styles.xml', workbook_names)
+            self.assertIn('<alignment horizontal="center" vertical="center" wrapText="1"/>', styles_xml)
+            self.assertIn('<c r="A2" s="1" t="inlineStr"><is><t>2026/4/16</t></is></c>', sheet_xml)
+            self.assertIn('<c r="B2" s="1" t="inlineStr"><is><t>罗威组</t></is></c>', sheet_xml)
             self.assertIn('已生成 Excel 表格:', '\n'.join(messages))
 
     def test_existing_tsv_without_bom_is_upgraded_on_append(self) -> None:
