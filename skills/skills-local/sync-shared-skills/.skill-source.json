@@ -1,0 +1,8 @@
+{
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/sync-shared-skills",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/sync-shared-skills",
+    "/home/zhanxp/.claude/skills/sync-shared-skills"
+  ],
+  "sync_policy": "symlink-preferred"
+}

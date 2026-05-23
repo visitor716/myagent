@@ -2,6 +2,9 @@
 # 这些文件不应提交到 git
 
 claude-code/settings.local.json
+claude code/settings.local.json
+claude code/private.local/
+claude code/**/*.secret.json
 codex/config.local.toml
 .env
 *.local

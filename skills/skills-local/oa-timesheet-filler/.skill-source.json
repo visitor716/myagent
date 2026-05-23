@@ -1,0 +1,13 @@
+{
+  "name": "oa-timesheet-filler",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/oa-timesheet-filler",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/oa-timesheet-filler",
+    "/home/zhanxp/.claude/skills/oa-timesheet-filler",
+    "/home/zhanxp/.hermes/skills/myagent/oa-timesheet-filler"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for safely filling DR Laser OA technical service timesheet forms and saving without submitting."
+}

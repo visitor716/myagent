@@ -1,0 +1,4 @@
+interface:
+  display_name: "OA 工时单填写"
+  short_description: "自动填写 OA 技术服务部工时分配单并只保存不提交"
+  default_prompt: "Use $oa-timesheet-filler to fill the OA 技术服务部-工时分配单 and save without submitting."

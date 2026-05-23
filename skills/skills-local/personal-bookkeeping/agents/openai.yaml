@@ -1,0 +1,7 @@
+interface:
+  display_name: "个人记账"
+  short_description: "分析账单月支出并剔除可报销项"
+  default_prompt: "Use $personal-bookkeeping to analyze Alipay, WeChat Pay, or bank transaction exports, summarize monthly personal spending, subtract refunds, and exclude reimbursable merchants when requested."
+
+policy:
+  allow_implicit_invocation: true

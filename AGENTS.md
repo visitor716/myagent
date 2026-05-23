@@ -43,3 +43,22 @@ Recent history follows Conventional Commits, for example `feat(skills): ...`, `f
 ## Security & Configuration Tips
 
 Never commit real API keys, tokens, or machine-local secrets. Use `.env.example`, `${VAR_NAME}` placeholders, and ignored local files such as `configs/claude-code/.env` or `configs/codex/config.local.toml`. Treat `~/.codex/skills/` and `~/.claude/skills/` as runtime mount points, not primary storage.
+
+## Codex Runtime Preferences
+
+The user's preferred Codex posture on this trusted machine is high-autonomy:
+keep `approval_policy = "never"` and `sandbox_mode = "danger-full-access"`
+unless the user explicitly asks to reduce privileges. Within higher-priority
+safety rules, proceed with reversible local configuration and verification work
+without asking for confirmation.
+
+For browser automation from WSL, use the `wsl-windows-chrome` skill and its
+dedicated Windows Chrome/Edge automation profile. Do not add or use
+Chrome/Browser MCP for normal browser tasks unless the user explicitly asks for
+MCP. If the dedicated Windows CDP endpoint is unavailable, report diagnostics
+instead of falling back to a fresh WSL/Linux browser.
+
+Long-term Codex memory lives under `docs/agent-memory/`. Update
+`open-loops.md` for paused follow-ups, `decisions.md` for durable choices, and
+`codex-operating-memory.md` for stable preferences. Keep these files free of
+secrets.

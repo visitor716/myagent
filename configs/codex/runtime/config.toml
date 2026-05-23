@@ -1,0 +1,47 @@
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[features]
+goals = true
+hooks = true
+memories = true
+prevent_idle_sleep = true
+remote_control = true
+
+[profiles.fast]
+model = "gpt-5.4-mini"
+model_reasoning_effort = "high"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[profiles.deep]
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[projects."/home/zhanxp/projects/MyAgent"]
+trust_level = "trusted"
+
+[projects."/home/zhanxp/projects/myagent"]
+trust_level = "trusted"
+
+[projects."/home/zhanxp/projects/offMusicPlayer"]
+trust_level = "trusted"
+
+[projects."/home/zhanxp/projects/tg-agent-gateway"]
+trust_level = "trusted"
+
+[projects."/home/zhanxp/projects/tg-agent-manager"]
+trust_level = "trusted"
+
+[projects."/mnt/c/Users/zhanxp"]
+trust_level = "trusted"
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
+
+[notice]
+hide_full_access_warning = true

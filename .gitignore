@@ -1,4 +1,5 @@
 .omx/
+docs/agent-memory/heartbeat.md
 
 # Generated runtime/dependency artifacts inside migrated skills
 **/venv/

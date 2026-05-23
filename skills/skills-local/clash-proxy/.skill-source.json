@@ -1,0 +1,11 @@
+{
+  "name": "clash-proxy",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/clash-proxy",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/clash-proxy"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for Windows/WSL proxy diagnostics, Clash/Mihomo routing, and aTrust/Sangfor coexistence guidance."
+}

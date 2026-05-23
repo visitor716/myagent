@@ -1,0 +1,11 @@
+{
+  "name": "personal-bookkeeping",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/personal-bookkeeping",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/personal-bookkeeping"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for personal bill analysis, monthly spending summaries, refund handling, and reimbursable expense exclusions."
+}

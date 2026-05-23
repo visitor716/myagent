@@ -1,4 +1,4 @@
 interface:
   display_name: "Windows WSL Proxy"
-  short_description: "Diagnose proxy routing and Clash region policy"
-  default_prompt: "Use $clash-proxy to diagnose my Windows/WSL proxy and adjust Clash/Mihomo routing policy safely."
+  short_description: "Diagnose Windows/WSL proxy routing, Clash policy, and aTrust coexistence"
+  default_prompt: "Use $clash-proxy to diagnose my Windows/WSL proxy, Clash/Mihomo routing, and aTrust/Sangfor coexistence safely."

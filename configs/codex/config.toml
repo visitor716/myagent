@@ -2,17 +2,25 @@ model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
-[mcp_servers]
 
-[mcp_servers.chrome-devtools]
-type = "stdio"
-command = "cmd"
-args = ["/c", "npx", "chrome-devtools-mcp@latest"]
+[features]
+goals = true
+hooks = true
+memories = true
+prevent_idle_sleep = true
+remote_control = true
 
-[mcp_servers.context7]
-type = "stdio"
-command = "cmd"
-args = ["/c", "npx", "-y", "@upstash/context7-mcp"]
+[profiles.fast]
+model = "gpt-5.4-mini"
+model_reasoning_effort = "high"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[profiles.deep]
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
 
 [projects."/home/zhanxp/projects/MyAgent"]
 trust_level = "trusted"

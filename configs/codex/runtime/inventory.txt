@@ -1,0 +1,124 @@
+-rw-r--r-- 0 /home/zhanxp/projects/myagent/configs/codex/runtime/inventory.txt -> 
+-rw-r--r-- 110 /home/zhanxp/projects/myagent/configs/codex/runtime/version.json -> 
+-rw-r--r-- 1614 /home/zhanxp/projects/myagent/configs/codex/runtime/hooks.json.omx-native-hooks.bak -> 
+-rw-r--r-- 18 /home/zhanxp/projects/myagent/configs/codex/runtime/hooks.json -> 
+-rw-r--r-- 2075 /home/zhanxp/projects/myagent/configs/codex/runtime/memories/codex-operating-memory.md -> 
+-rw-r--r-- 2133 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/team-executor.md -> 
+-rw-r--r-- 2711 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/researcher.md -> 
+-rw-r--r-- 29136 /home/zhanxp/projects/myagent/configs/codex/runtime/AGENTS.md -> 
+-rw-r--r-- 3125 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/team-executor.toml -> 
+-rw-r--r-- 3239 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/verifier.md -> 
+-rw-r--r-- 3743 /home/zhanxp/projects/myagent/configs/codex/runtime/rules/default.rules -> 
+-rw-r--r-- 3744 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/architect.md -> 
+-rw-r--r-- 4239 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/researcher.toml -> 
+-rw-r--r-- 4812 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/architect.toml -> 
+-rw-r--r-- 4822 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/verifier.toml -> 
+-rw-r--r-- 5127 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/vision.md -> 
+-rw-r--r-- 5163 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/writer.md -> 
+-rw-r--r-- 5806 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/git-master.md -> 
+-rw-r--r-- 6097 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/vision.toml -> 
+-rw-r--r-- 6133 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/code-simplifier.md -> 
+-rw-r--r-- 6188 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/build-fixer.md -> 
+-rw-r--r-- 6299 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/code-reviewer.md -> 
+-rw-r--r-- 6646 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/planner.md -> 
+-rw-r--r-- 6659 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/writer.toml -> 
+-rw-r--r-- 6707 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/analyst.md -> 
+-rw-r--r-- 6900 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/debugger.md -> 
+-rw-r--r-- 6960 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/dependency-expert.md -> 
+-rw-r--r-- 6993 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/designer.md -> 
+-rw-r--r-- 703 /home/zhanxp/projects/myagent/configs/codex/runtime/README.md -> 
+-rw-r--r-- 7052 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/code-simplifier.toml -> 
+-rw-r--r-- 7126 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/security-reviewer.md -> 
+-rw-r--r-- 7277 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/git-master.toml -> 
+-rw-r--r-- 7292 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/test-engineer.md -> 
+-rw-r--r-- 7364 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/code-reviewer.toml -> 
+-rw-r--r-- 7654 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/build-fixer.toml -> 
+-rw-r--r-- 7693 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/planner.toml -> 
+-rw-r--r-- 7775 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/analyst.toml -> 
+-rw-r--r-- 7875 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/explore.md -> 
+-rw-r--r-- 8012 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/critic.md -> 
+-rw-r--r-- 8185 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/security-reviewer.toml -> 
+-rw-r--r-- 8264 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/test-engineer.toml -> 
+-rw-r--r-- 8267 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts/executor.md -> 
+-rw-r--r-- 8404 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/debugger.toml -> 
+-rw-r--r-- 8479 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/designer.toml -> 
+-rw-r--r-- 8561 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/dependency-expert.toml -> 
+-rw-r--r-- 8851 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/explore.toml -> 
+-rw-r--r-- 9070 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/critic.toml -> 
+-rw-r--r-- 9206 /home/zhanxp/projects/myagent/configs/codex/runtime/agents/executor.toml -> 
+-rw-r--r-- 957 /home/zhanxp/projects/myagent/configs/codex/runtime/memories/user-preferences.md -> 
+-rw-r--r-- 988 /home/zhanxp/projects/myagent/configs/codex/runtime/config.toml -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/agents -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/memories -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/prompts -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/rules -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/.system -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/analyze -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/ask-claude -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/ask-gemini -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/audio -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/autopilot -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/cancel -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/commit -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/configure-notifications -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/deep-interview -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/deploy -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/doctor -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/help -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/hud -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/lint -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/note -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/omx-setup -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/personal-balance-sheet -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/plan -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/pr -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/ralph -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/ralplan -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/review -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/skill -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/sync-shared-skills.bak.20260523-125124 -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/team -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/test -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/tg-agent-gateway-worktree-acceptance -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/tg-gateway-menu-recovery -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/trace -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/typecheck -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/ultraqa -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/ultrawork -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/vercel -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/visual-verdict -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/vitest -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/web-clone -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/wiki -> 
+drwxr-xr-x 4096 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/worker -> 
+lrwxrwxrwx 40 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/sqlite-admin -> /home/zhanxp/.claude/skills/sqlite-admin
+lrwxrwxrwx 59 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/wx-cli -> /home/zhanxp/projects/myagent/skills/skills-download/wx-cli
+lrwxrwxrwx 61 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/clash-proxy -> /home/zhanxp/projects/myagent/skills/skills-local/clash-proxy
+lrwxrwxrwx 62 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/find-docs -> /home/zhanxp/projects/myagent/skills/skills-download/find-docs
+lrwxrwxrwx 64 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/code-review -> /home/zhanxp/projects/myagent/skills/skills-download/code-review
+lrwxrwxrwx 64 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/find-skills -> /home/zhanxp/projects/myagent/skills/skills-download/find-skills
+lrwxrwxrwx 65 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/Claude-to-IM-skill -> /home/zhanxp/projects/myagent/skills/skills-download/claude-to-im
+lrwxrwxrwx 65 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/cc-switch-skill -> /home/zhanxp/projects/myagent/skills/skills-local/cc-switch-skill
+lrwxrwxrwx 65 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/claude-to-im -> /home/zhanxp/projects/myagent/skills/skills-download/claude-to-im
+lrwxrwxrwx 66 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/image-renamer -> /home/zhanxp/projects/myagent/skills/skills-download/image-renamer
+lrwxrwxrwx 68 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/ai-slop-cleaner -> /home/zhanxp/projects/myagent/skills/skills-download/ai-slop-cleaner
+lrwxrwxrwx 68 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/daily-report-table -> /home/zhanxp/projects/myagent/skills/skills-local/daily-report-table
+lrwxrwxrwx 68 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/security-review -> /home/zhanxp/projects/myagent/skills/skills-download/security-review
+lrwxrwxrwx 68 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/sync-shared-skills -> /home/zhanxp/projects/myagent/skills/skills-local/sync-shared-skills
+lrwxrwxrwx 68 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/wsl-windows-chrome -> /home/zhanxp/projects/myagent/skills/skills-local/wsl-windows-chrome
+lrwxrwxrwx 69 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/coding-standards -> /home/zhanxp/projects/myagent/skills/skills-download/coding-standards
+lrwxrwxrwx 69 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/deploy-to-vercel -> /home/zhanxp/projects/myagent/skills/skills-download/deploy-to-vercel
+lrwxrwxrwx 69 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/oa-timesheet-filler -> /home/zhanxp/projects/myagent/skills/skills-local/oa-timesheet-filler
+lrwxrwxrwx 69 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/telegram-input-flow -> /home/zhanxp/projects/myagent/skills/skills-local/telegram-input-flow
+lrwxrwxrwx 70 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/cc-connect-bot-setup -> /home/zhanxp/projects/myagent/skills/skills-local/cc-connect-bot-setup
+lrwxrwxrwx 70 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/personal-bookkeeping -> /home/zhanxp/projects/myagent/skills/skills-local/personal-bookkeeping
+lrwxrwxrwx 71 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/neocd-change-workflow -> /home/zhanxp/projects/myagent/skills/skills-local/neocd-change-workflow
+lrwxrwxrwx 72 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/agent-usage-monitor -> /home/zhanxp/projects/myagent/skills/skills-download/agent-usage-monitor
+lrwxrwxrwx 74 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/web-design-guidelines -> /home/zhanxp/projects/myagent/skills/skills-download/web-design-guidelines
+lrwxrwxrwx 76 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/create-telegram-bot-bridge -> /home/zhanxp/projects/myagent/skills/skills-local/create-telegram-bot-bridge
+lrwxrwxrwx 79 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/vercel-react-native-skills -> /home/zhanxp/projects/myagent/skills/skills-download/vercel-react-native-skills
+lrwxrwxrwx 79 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/worktree-execution-acceptance -> /home/zhanxp/projects/myagent/skills/skills-local/worktree-execution-acceptance
+lrwxrwxrwx 80 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/vercel-composition-patterns -> /home/zhanxp/projects/myagent/skills/skills-download/vercel-composition-patterns
+lrwxrwxrwx 80 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/vercel-react-best-practices -> /home/zhanxp/projects/myagent/skills/skills-download/vercel-react-best-practices
+lrwxrwxrwx 84 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/reimbursement-screenshot-organizer -> /home/zhanxp/projects/myagent/skills/skills-local/reimbursement-screenshot-organizer

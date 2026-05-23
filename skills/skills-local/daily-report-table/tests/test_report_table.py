@@ -314,7 +314,7 @@ class ReportTableTests(unittest.TestCase):
         self.assertEqual(chart_map['3A-AC'], '光斑破洞')
         self.assertEqual(chart_map['3A-BD'], '光斑破洞')
 
-    def test_persist_outputs_appends_rows_to_fixed_notes(self) -> None:
+    def test_persist_outputs_appends_spot_xlsx(self) -> None:
         metadata = {
             'date': '2026/4/16',
             'name': '詹香平',
@@ -326,7 +326,7 @@ class ReportTableTests(unittest.TestCase):
             'area': 'F3',
             'output_dir': '',
             'main_note': '每天日报.md',
-            'spot_note': '光斑调试记录.md',
+            'spot_xlsx_file': '光斑调试记录.xlsx',
             'wecom_html_file': '企业微信日报-2026-04-16.html',
             'chart_column_file': '光斑异常图表列-2026-04-16.tsv',
             'chart_copy_html_file': '光斑异常图表复制-2026-04-16.html',
@@ -335,94 +335,34 @@ class ReportTableTests(unittest.TestCase):
         }
         main_rows = [
             ['', '', '', '', '9A', '', '工艺调试', '驱动器报警EE', '处理过程1', '驱动器报警EE', '詹香平'],
-            ['', '', '', '', '9B1', '', '工艺调试', '光斑下部分破洞', '处理过程2', '光斑下部分破洞', '詹香平'],
         ]
-        spot_rows = [
+        spot_rows_batch1 = [
             ['F3', '4月16号', '9B', 'AC', '光斑破洞', '处理过程2', '詹香平', ''],
         ]
+        spot_rows_batch2 = [
+            ['F3', '4月17号', '10A', 'BD', '能量偏移', '处理过程3', '詹香平', ''],
+        ]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             metadata['output_dir'] = temp_dir
-            report_table.persist_outputs(main_rows, spot_rows, metadata, 'markdown', 'all', None, False)
-            report_table.persist_outputs(main_rows[:1], [], metadata, 'markdown', 'all', None, False)
+            # First write
+            report_table.persist_outputs(main_rows, spot_rows_batch1, metadata, 'markdown', 'xlsx', None, False)
+            # Second write: should append
+            report_table.persist_outputs(main_rows, spot_rows_batch2, metadata, 'markdown', 'xlsx', None, False)
+
+            spot_xlsx = Path(temp_dir) / '光斑调试记录.xlsx'
+            existing_rows = report_table.read_xlsx_data_rows(spot_xlsx)
+            self.assertEqual(len(existing_rows), 2)
+            self.assertEqual(existing_rows[0][1], '4月16号')
+            self.assertEqual(existing_rows[0][2], '9B')
+            self.assertEqual(existing_rows[1][1], '4月17号')
+            self.assertEqual(existing_rows[1][2], '10A')
 
             main_note = Path(temp_dir) / '每天日报.md'
-            spot_note = Path(temp_dir) / '光斑调试记录.md'
-            main_tsv = Path(temp_dir) / '每天日报.tsv'
-            spot_tsv = Path(temp_dir) / '光斑调试记录.tsv'
-            xlsx_file = Path(temp_dir) / '日报表格-2026-04-16.xlsx'
-            spot_xlsx_file = Path(temp_dir) / '光斑调试记录-2026-04-16.xlsx'
-
+            self.assertTrue(main_note.exists())
             main_content = main_note.read_text(encoding='utf-8')
-            spot_content = spot_note.read_text(encoding='utf-8')
-            main_tsv_content = main_tsv.read_text(encoding='utf-8')
-            spot_tsv_content = spot_tsv.read_text(encoding='utf-8')
-
             self.assertIn('# 每天日报', main_content)
             self.assertEqual(main_content.count('|  |  |  |  | 9A |  | 工艺调试 | 驱动器报警EE | 处理过程1 | 驱动器报警EE | 詹香平 |'), 2)
-            self.assertIn('| F3 | 4月16号 | 9B | AC | 光斑破洞 | 处理过程2 | 詹香平 |  |', spot_content)
-            self.assertTrue(main_tsv.read_bytes().startswith(report_table.UTF8_BOM))
-            self.assertTrue(spot_tsv.read_bytes().startswith(report_table.UTF8_BOM))
-            self.assertIn('日期\t组别\t客户基地\t设备类型\t机台编号\t业务\t异常分类\t异常现象\t调试过程\t问题复盘\t记录人员', main_tsv_content)
-            self.assertEqual(main_tsv_content.count('\t9A\t'), 2)
-            self.assertIn('F3\t4月16号\t9B\tAC\t光斑破洞\t处理过程2\t詹香平\t', spot_tsv_content)
-            self.assertTrue(xlsx_file.exists())
-            with zipfile.ZipFile(xlsx_file) as workbook:
-                workbook_names = workbook.namelist()
-                sheet_xml = workbook.read('xl/worksheets/sheet1.xml').decode('utf-8')
-                styles_xml = workbook.read('xl/styles.xml').decode('utf-8')
-            self.assertIn('xl/styles.xml', workbook_names)
-            self.assertIn('<alignment horizontal="center" vertical="center" wrapText="1"/>', styles_xml)
-            self.assertIn('<left style="thin"><color auto="1"/></left>', styles_xml)
-            self.assertIn('<c r="A1" s="1" t="inlineStr"><is><t>日期</t></is></c>', sheet_xml)
-            self.assertIn('<c r="B1" s="1" t="inlineStr"><is><t>组别</t></is></c>', sheet_xml)
-            self.assertIn('<c r="C1" s="1" t="inlineStr"><is><t>客户基地</t></is></c>', sheet_xml)
-            self.assertTrue(spot_xlsx_file.exists())
-            with zipfile.ZipFile(spot_xlsx_file) as workbook:
-                spot_workbook_names = workbook.namelist()
-                spot_sheet_xml = workbook.read('xl/worksheets/sheet1.xml').decode('utf-8')
-                spot_styles_xml = workbook.read('xl/styles.xml').decode('utf-8')
-            self.assertIn('xl/styles.xml', spot_workbook_names)
-            self.assertIn('<alignment horizontal="center" vertical="center" wrapText="1"/>', spot_styles_xml)
-            self.assertIn('<bottom style="thin"><color auto="1"/></bottom>', spot_styles_xml)
-            self.assertIn('<col min="6" max="6" width="48" customWidth="1"/>', spot_sheet_xml)
-            self.assertIn('<c r="F2" s="1" t="inlineStr"><is><t>处理过程2</t></is></c>', spot_sheet_xml)
-
-    def test_tsv_write_mode_only_writes_tsv_tables(self) -> None:
-        metadata = {
-            'date': '2026/4/16',
-            'name': '詹香平',
-            'group': '',
-            'base': '',
-            'device': '',
-            'business': '',
-            'category': '工艺调试',
-            'area': 'F3',
-            'output_dir': '',
-            'main_note': '每天日报.md',
-            'spot_note': '光斑调试记录.md',
-            'wecom_html_file': '企业微信日报-2026-04-16.html',
-            'chart_column_file': '光斑异常图表列-2026-04-16.tsv',
-            'chart_copy_html_file': '光斑异常图表复制-2026-04-16.html',
-            'chart_target_sheet': '',
-            'chart_start_cell': '',
-        }
-        main_rows = [
-            ['', '', '', '', '6B1', '', '工艺调试', '能量偏右上', '能量偏右上，调整DOE后光斑形貌OK', '能量偏移', '詹香平'],
-        ]
-        spot_rows = [
-            ['F3', '4月16号', '6B', 'AC', '能量偏移', '能量偏右上，调整DOE后光斑形貌OK', '詹香平', ''],
-        ]
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            metadata['output_dir'] = temp_dir
-            messages = report_table.persist_outputs(main_rows, spot_rows, metadata, 'markdown', 'tsv', None, False)
-
-            self.assertFalse((Path(temp_dir) / '每天日报.md').exists())
-            self.assertFalse((Path(temp_dir) / '光斑调试记录.md').exists())
-            self.assertTrue((Path(temp_dir) / '每天日报.tsv').exists())
-            self.assertTrue((Path(temp_dir) / '光斑调试记录.tsv').exists())
-            self.assertIn('已跳过日报/光斑 Markdown 写入。', messages)
 
     def test_xlsx_write_mode_only_writes_excel_workbook(self) -> None:
         metadata = {
@@ -435,8 +375,6 @@ class ReportTableTests(unittest.TestCase):
             'category': '工艺调试',
             'area': 'F3',
             'output_dir': '',
-            'main_note': '每天日报.md',
-            'spot_note': '光斑调试记录.md',
             'xlsx_file': '日报表格-2026-04-16.xlsx',
             'wecom_html_file': '企业微信日报-2026-04-16.html',
             'chart_column_file': '光斑异常图表列-2026-04-16.tsv',
@@ -452,8 +390,6 @@ class ReportTableTests(unittest.TestCase):
             metadata['output_dir'] = temp_dir
             messages = report_table.persist_outputs(main_rows, [], metadata, 'markdown', 'xlsx', None, False)
 
-            self.assertFalse((Path(temp_dir) / '每天日报.md').exists())
-            self.assertFalse((Path(temp_dir) / '每天日报.tsv').exists())
             xlsx_file = Path(temp_dir) / '日报表格-2026-04-16.xlsx'
             self.assertTrue(xlsx_file.exists())
             with zipfile.ZipFile(xlsx_file) as workbook:
@@ -467,21 +403,6 @@ class ReportTableTests(unittest.TestCase):
             self.assertIn('<c r="B2" s="1" t="inlineStr"><is><t>罗威组</t></is></c>', sheet_xml)
             self.assertIn('已生成 Excel 表格:', '\n'.join(messages))
 
-    def test_existing_tsv_without_bom_is_upgraded_on_append(self) -> None:
-        legacy_content = '日期\t组别\n2026/4/15\t罗威组\n'.encode('utf-8')
-        rows = [['2026/4/16', '罗威组']]
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            tsv_file = Path(temp_dir) / '每天日报.tsv'
-            tsv_file.write_bytes(legacy_content)
-
-            report_table.append_rows_to_tsv_table(tsv_file, ['日期', '组别'], rows)
-
-            content = tsv_file.read_bytes()
-            self.assertTrue(content.startswith(report_table.UTF8_BOM))
-            self.assertEqual(content.count(report_table.UTF8_BOM), 1)
-            self.assertIn('2026/4/16\t罗威组', tsv_file.read_text(encoding='utf-8-sig'))
-
     def test_chart_copy_outputs_are_written(self) -> None:
         metadata = {
             'date': '2026/4/18',
@@ -493,8 +414,6 @@ class ReportTableTests(unittest.TestCase):
             'category': '工艺调试',
             'area': 'F3',
             'output_dir': '',
-            'main_note': '每天日报.md',
-            'spot_note': '光斑调试记录.md',
             'wecom_html_file': '企业微信日报-2026-04-18.html',
             'chart_column_file': '光斑异常图表列-2026-04-18.tsv',
             'chart_copy_html_file': '光斑异常图表复制-2026-04-18.html',

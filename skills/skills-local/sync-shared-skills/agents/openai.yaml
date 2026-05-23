@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Shared Skills"
+  short_description: "Sync skills and reusable AI runtime configuration safely."
+  default_prompt: "Sync common user skills or back up reusable Codex/Claude runtime configuration into myagent while skipping secrets, runtime-only state, and unmanaged conflicts."

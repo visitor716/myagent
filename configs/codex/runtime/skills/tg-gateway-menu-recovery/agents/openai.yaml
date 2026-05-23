@@ -1,0 +1,4 @@
+interface:
+  display_name: "TG Gateway Menu Recovery"
+  short_description: "Diagnose Telegram menu and startup failures"
+  default_prompt: "Use $tg-gateway-menu-recovery to diagnose why the tg-agent-gateway Telegram menu is not responding."

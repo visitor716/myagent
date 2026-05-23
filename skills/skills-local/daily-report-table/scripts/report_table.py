@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass, field
 from datetime import date
@@ -28,10 +29,8 @@ DEFAULTS = {
     'output_dir': r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化',
     'main_note': '每天日报.md',
     'spot_note': '光斑调试记录.md',
-    'main_tsv_file': '每天日报.tsv',
-    'spot_tsv_file': '光斑调试记录.tsv',
     'xlsx_file': '日报表格-{date}.xlsx',
-    'spot_xlsx_file': '光斑调试记录-{date}.xlsx',
+    'spot_xlsx_file': '光斑调试记录.xlsx',
     'wecom_html_file': '企业微信日报-{date}.html',
     'chart_column_file': '光斑异常图表列-{date}.tsv',
     'chart_copy_html_file': '光斑异常图表复制-{date}.html',
@@ -316,6 +315,8 @@ def normalize_spot_issue(abnormal: str, process_text: str) -> str:
         return '能量偏移'
     if '偏移' in combined:
         return '能量偏移'
+    if '偏' in abnormal:
+        return '能量偏移'
     if '光斑' in abnormal:
         return abnormal
     return '光斑异常'
@@ -476,7 +477,7 @@ def render_markdown(headers: list[str], rows: list[list[str]]) -> str:
     if not rows:
         return ''
     header_line = '| ' + ' | '.join(headers) + ' |'
-    separator_line = '| ' + ' | '.join(['---'] * len(headers)) + ' |'
+    separator_line = '| ' + ' | '.join([':---:'] * len(headers)) + ' |'
     body_lines = ['| ' + ' | '.join(clean_cell(cell) for cell in row) + ' |' for row in rows]
     return '\n'.join([header_line, separator_line, *body_lines])
 
@@ -782,17 +783,48 @@ def render_sections(
     return '\n'.join(part for part in parts if part is not None)
 
 
+def write_wecom_html(file_path: Path, main_rows: list[list[str]], spot_rows: list[list[str]]) -> None:
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(render_wecom_html(main_rows, spot_rows), encoding='utf-8')
+
+
 def markdown_row(row: list[str]) -> str:
     return '| ' + ' | '.join(clean_cell(cell) for cell in row) + ' |'
 
 
 def ensure_markdown_note(file_path: Path, headers: list[str], title: str) -> None:
-    if file_path.exists() and file_path.read_text(encoding='utf-8').strip():
-        return
+    if file_path.exists():
+        content = file_path.read_text(encoding='utf-8').strip()
+        if content:
+            # Upgrade old --- separator to :---: for centered columns
+            replaced = False
+            lines = content.split('\n')
+            new_lines: list[str] = []
+            for i, line in enumerate(lines):
+                if replaced and lines[i - 1].startswith('|') and not lines[i - 1].startswith('|:'):
+                    # Skip the original separator line we just replaced
+                    if line.startswith('|') and ':' not in line and set(line) <= {'|', ' ', '-'}:
+                        continue
+                new_lines.append(line)
+                # Check if next line is a dash-only separator without alignment
+                if (
+                    i + 1 < len(lines)
+                    and line.startswith('|')
+                    and ':' not in lines[i + 1]
+                    and set(lines[i + 1].strip()) <= {'|', ' ', '-'}
+                ):
+                    sep_cols = [c for c in lines[i + 1].strip()[1:-1].split('|')]
+                    if len(sep_cols) >= 2:
+                        new_lines.append('| ' + ' | '.join(':---:' for _ in sep_cols) + ' |')
+                        replaced = True
+            if replaced:
+                file_path.write_text('\n'.join(new_lines) + '\n', encoding='utf-8')
+            return
 
     header_line = '| ' + ' | '.join(headers) + ' |'
-    separator_line = '| ' + ' | '.join(['---'] * len(headers)) + ' |'
+    separator_line = '| ' + ' | '.join([':---:'] * len(headers)) + ' |'
     content = f'# {title}\n\n{header_line}\n{separator_line}\n'
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content, encoding='utf-8')
 
 
@@ -810,40 +842,6 @@ def append_rows_to_markdown_note(file_path: Path, headers: list[str], title: str
         for row in rows:
             handle.write(markdown_row(row))
             handle.write('\n')
-
-
-def ensure_tsv_table(file_path: Path, headers: list[str]) -> None:
-    if file_path.exists():
-        existing_bytes = file_path.read_bytes()
-        if existing_bytes:
-            if not existing_bytes.startswith(UTF8_BOM):
-                file_path.write_bytes(UTF8_BOM + existing_bytes)
-            if file_path.read_text(encoding='utf-8-sig').strip():
-                return
-
-    header_line = '\t'.join(clean_tsv_cell(header) for header in headers)
-    file_path.write_bytes(UTF8_BOM + f'{header_line}\n'.encode('utf-8'))
-
-
-def append_rows_to_tsv_table(file_path: Path, headers: list[str], rows: list[list[str]]) -> None:
-    if not rows:
-        return
-
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    ensure_tsv_table(file_path, headers)
-    existing_content = file_path.read_text(encoding='utf-8-sig')
-
-    with file_path.open('a', encoding='utf-8') as handle:
-        if existing_content and not existing_content.endswith('\n'):
-            handle.write('\n')
-        for row in rows:
-            handle.write('\t'.join(clean_tsv_cell(cell) for cell in row))
-            handle.write('\n')
-
-
-def write_wecom_html(file_path: Path, main_rows: list[list[str]], spot_rows: list[list[str]]) -> None:
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(render_wecom_html(main_rows, spot_rows), encoding='utf-8')
 
 
 def xlsx_styles_xml() -> str:
@@ -962,6 +960,39 @@ def write_xlsx_workbook(file_path: Path, main_rows: list[list[str]], spot_rows: 
     with zipfile.ZipFile(file_path, 'w', compression=zipfile.ZIP_DEFLATED) as workbook:
         for name, content in files.items():
             workbook.writestr(name, content)
+
+
+XLSX_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+
+
+def read_xlsx_data_rows(file_path: Path) -> list[list[str]]:
+    """Read data rows (excluding header row 1) from an XLSX file's first sheet."""
+    if not file_path.exists():
+        return []
+    try:
+        with zipfile.ZipFile(file_path, 'r') as z:
+            with z.open('xl/worksheets/sheet1.xml') as f:
+                tree = ET.parse(f)
+    except (zipfile.BadZipFile, KeyError, ET.ParseError):
+        return []
+
+    ns = {'s': XLSX_NS}
+    rows_data: list[list[str]] = []
+    for row_elem in tree.getroot().findall('s:sheetData/s:row', ns):
+        row_num = int(row_elem.get('r', '0'))
+        if row_num == 1:
+            continue
+        cells: list[str] = []
+        for cell_elem in row_elem.findall('s:c', ns):
+            is_elem = cell_elem.find('s:is', ns)
+            if is_elem is not None:
+                t_elem = is_elem.find('s:t', ns)
+                cells.append(t_elem.text if t_elem is not None and t_elem.text else '')
+            else:
+                cells.append('')
+        if cells:
+            rows_data.append(cells)
+    return rows_data
 
 
 def write_spot_xlsx_workbook(file_path: Path, spot_rows: list[list[str]]) -> None:
@@ -1180,48 +1211,30 @@ def persist_outputs(
     chart_copy: bool,
 ) -> list[str]:
     output_dir = resolve_path(metadata['output_dir'])
-    main_path = output_dir / metadata['main_note']
-    spot_path = output_dir / metadata['spot_note']
-    main_tsv_path = output_dir / metadata.get('main_tsv_file', DEFAULTS['main_tsv_file'])
-    spot_tsv_path = output_dir / metadata.get('spot_tsv_file', DEFAULTS['spot_tsv_file'])
     xlsx_file = metadata.get('xlsx_file') or resolve_filename_template(DEFAULTS['xlsx_file'], metadata['date'])
     xlsx_path = output_dir / xlsx_file
-    write_notes = write_mode in ('all', 'notes')
-    write_tsv = write_mode in ('all', 'notes', 'tsv')
     write_xlsx = write_mode in ('all', 'xlsx')
     write_html = fmt == 'wecom-html' and write_mode in ('all', 'html')
 
     saved_messages: list[str] = []
-    if write_notes:
-        append_rows_to_markdown_note(main_path, MAIN_HEADERS, '每天日报', main_rows)
-        saved_messages.append(f'已追加到: {display_path(main_path)}')
-        if spot_rows:
-            append_rows_to_markdown_note(spot_path, SPOT_HEADERS, '光斑调试记录', spot_rows)
-            saved_messages.append(f'已追加到: {display_path(spot_path)}')
-        else:
-            saved_messages.append('未检测到光斑相关内容，未写入光斑调试记录。')
-    else:
-        saved_messages.append('已跳过日报/光斑 Markdown 写入。')
-
-    if write_tsv:
-        append_rows_to_tsv_table(main_tsv_path, MAIN_HEADERS, main_rows)
-        saved_messages.append(f'已追加 TSV 表格: {display_path(main_tsv_path)}')
-        if spot_rows:
-            append_rows_to_tsv_table(spot_tsv_path, SPOT_HEADERS, spot_rows)
-            saved_messages.append(f'已追加 TSV 表格: {display_path(spot_tsv_path)}')
-        else:
-            saved_messages.append('未检测到光斑相关内容，未写入光斑 TSV 表格。')
-    else:
-        saved_messages.append('已跳过 TSV 表格写入。')
-
     if write_xlsx:
+        main_note_path = output_dir / metadata.get('main_note', DEFAULTS['main_note'])
+        append_rows_to_markdown_note(main_note_path, MAIN_HEADERS, '每天日报', main_rows)
+        saved_messages.append(f'已追加日报到: {display_path(main_note_path)}')
+        if spot_rows:
+            spot_note_path = output_dir / metadata.get('spot_note', DEFAULTS['spot_note'])
+            append_rows_to_markdown_note(spot_note_path, SPOT_HEADERS, '光斑调试记录', spot_rows)
+            saved_messages.append(f'已追加光斑调试记录到: {display_path(spot_note_path)}')
+
         write_xlsx_workbook(xlsx_path, main_rows, spot_rows)
         saved_messages.append(f'已生成 Excel 表格: {display_path(xlsx_path)}')
         if spot_rows:
-            spot_xlsx_file = metadata.get('spot_xlsx_file') or resolve_filename_template(DEFAULTS['spot_xlsx_file'], metadata['date'])
+            spot_xlsx_file = metadata.get('spot_xlsx_file') or DEFAULTS['spot_xlsx_file']
             spot_xlsx_path = output_dir / spot_xlsx_file
-            write_spot_xlsx_workbook(spot_xlsx_path, spot_rows)
-            saved_messages.append(f'已生成光斑 Excel 表格: {display_path(spot_xlsx_path)}')
+            existing = read_xlsx_data_rows(spot_xlsx_path)
+            all_spot_rows = existing + spot_rows
+            write_spot_xlsx_workbook(spot_xlsx_path, all_spot_rows)
+            saved_messages.append(f'已追加光斑调试记录到: {display_path(spot_xlsx_path)} (累计 {len(all_spot_rows)} 条)')
     else:
         saved_messages.append('已跳过 Excel 表格写入。')
 
@@ -1314,10 +1327,8 @@ def build_metadata(args: argparse.Namespace) -> dict[str, str]:
         'output_dir': args.output_dir,
         'main_note': args.main_note,
         'spot_note': args.spot_note,
-        'main_tsv_file': args.main_tsv_file,
-        'spot_tsv_file': args.spot_tsv_file,
         'xlsx_file': resolve_filename_template(args.xlsx_file, args.date),
-        'spot_xlsx_file': resolve_filename_template(args.spot_xlsx_file, args.date),
+        'spot_xlsx_file': args.spot_xlsx_file,
         'wecom_html_file': resolve_filename_template(args.wecom_html_file, args.date),
         'chart_column_file': resolve_filename_template(args.chart_column_file, args.date),
         'chart_copy_html_file': resolve_filename_template(args.chart_copy_html_file, args.date),
@@ -1448,12 +1459,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--category', default=DEFAULTS['category'], help='异常分类，默认自动判断；传入具体值可手动覆盖。')
     parser.add_argument('--area', default=DEFAULTS['area'], help='光斑调试表区域，默认F3。')
     parser.add_argument('--output-dir', default=default_output_dir(), help='输出目录。')
-    parser.add_argument('--main-note', default=DEFAULTS['main_note'], help='日报笔记文件名。')
-    parser.add_argument('--spot-note', default=DEFAULTS['spot_note'], help='光斑笔记文件名。')
-    parser.add_argument('--main-tsv-file', default=DEFAULTS['main_tsv_file'], help='日报 TSV 表格文件名。')
-    parser.add_argument('--spot-tsv-file', default=DEFAULTS['spot_tsv_file'], help='光斑 TSV 表格文件名。')
+    parser.add_argument('--main-note', default=DEFAULTS['main_note'], help='日报 Markdown 笔记文件名。')
+    parser.add_argument('--spot-note', default=DEFAULTS['spot_note'], help='光斑调试记录 Markdown 笔记文件名。')
     parser.add_argument('--xlsx-file', default=DEFAULTS['xlsx_file'], help='Excel 表格文件名。')
-    parser.add_argument('--spot-xlsx-file', default=DEFAULTS['spot_xlsx_file'], help='光斑 Excel 表格文件名。')
+    parser.add_argument('--spot-xlsx-file', default=DEFAULTS['spot_xlsx_file'], help='光斑调试记录 Excel 文件名。')
     parser.add_argument('--wecom-html-file', default=DEFAULTS['wecom_html_file'], help='企业微信 HTML 文件名。')
     parser.add_argument('--chart-column-file', default=DEFAULTS['chart_column_file'], help='图表列文件名。')
     parser.add_argument('--chart-copy-html-file', default=DEFAULTS['chart_copy_html_file'], help='图表复制页文件名。')
@@ -1466,9 +1475,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--chart-copy', action='store_true', help='生成图表列和复制页。')
     parser.add_argument(
         '--write-mode',
-        choices=('all', 'notes', 'tsv', 'xlsx', 'html', 'none'),
+        choices=('all', 'xlsx', 'html', 'none'),
         default=DEFAULT_WRITE_MODE,
-        help='写入模式。默认 xlsx。all=Markdown+TSV+XLSX（wecom-html时额外HTML），notes=Markdown+TSV，tsv=仅TSV，xlsx=仅XLSX，html=仅HTML，none=全部跳过。',
+        help='写入模式。默认 xlsx。all=同xlsx（wecom-html时额外HTML），xlsx=仅XLSX，html=仅HTML，none=全部跳过。',
     )
     parser.add_argument(
         '--preview',

@@ -44,4 +44,34 @@ code() {
 alias cyolo='command codex --dangerously-bypass-approvals-and-sandbox'
 alias cfa='command codex --full-auto'
 alias omxmad='omx --madmax'
+
+cfast() {
+  command codex --dangerously-bypass-approvals-and-sandbox \
+    -m gpt-5.4-mini \
+    -c 'model_reasoning_effort="high"' \
+    "$@"
+}
+
+cdeep() {
+  command codex --dangerously-bypass-approvals-and-sandbox \
+    -m gpt-5.5 \
+    -c 'model_reasoning_effort="xhigh"' \
+    "$@"
+}
+
+cheartbeat() {
+  python3 /home/zhanxp/projects/myagent/scripts/codex_heartbeat.py "$@"
+}
+
+cchrome_status() {
+  bash /home/zhanxp/projects/myagent/skills/skills-local/wsl-windows-chrome/scripts/attach_windows_logged_in_chrome.sh --status --json "$@"
+}
+
+cchrome_attach() {
+  bash /home/zhanxp/projects/myagent/skills/skills-local/wsl-windows-chrome/scripts/attach_windows_logged_in_chrome.sh "$@"
+}
+
+cremote() {
+  command codex remote-control --enable remote_control --enable prevent_idle_sleep "$@"
+}
 # <<< codex full-auto defaults <<<
