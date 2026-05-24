@@ -1,0 +1,7 @@
+interface:
+  display_name: "WSL Windows Path Compat"
+  short_description: "Convert Windows screenshot paths for WSL agents."
+  default_prompt: "Use $wsl-windows-path-compat when a WSL/Linux agent cannot read Windows screenshot, image, Telegram attachment, or file:///C:/ paths; convert them to /mnt/<drive>/ paths and verify the runner prompt includes the converted path."
+
+policy:
+  allow_implicit_invocation: true

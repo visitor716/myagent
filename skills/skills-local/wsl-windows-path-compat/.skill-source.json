@@ -1,0 +1,12 @@
+{
+  "name": "wsl-windows-path-compat",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/wsl-windows-path-compat",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/wsl-windows-path-compat",
+    "/home/zhanxp/.agents/skills/wsl-windows-path-compat"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for converting Windows screenshot and image paths into WSL-readable /mnt/<drive>/ paths before agent execution."
+}
