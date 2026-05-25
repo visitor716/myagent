@@ -1,0 +1,13 @@
+{
+  "name": "disable-mcp-startup",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/disable-mcp-startup",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/disable-mcp-startup",
+    "/home/zhanxp/.claude/skills/disable-mcp-startup",
+    "/home/zhanxp/.hermes/skills/myagent/disable-mcp-startup"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for removing unwanted Codex and Claude Code MCP startup entries from runtime configs and myagent templates without broad config rewrites."
+}
