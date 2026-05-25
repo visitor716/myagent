@@ -4,7 +4,8 @@
   "managed_by": "manual-git",
   "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/wsl-windows-chrome",
   "runtime_targets": [
-    "/home/zhanxp/.codex/skills/wsl-windows-chrome"
+    "/home/zhanxp/.codex/skills/wsl-windows-chrome",
+    "/home/zhanxp/.agents/skills/wsl-windows-chrome"
   ],
   "sync_policy": "symlink-preferred",
   "notes": "Local custom skill for WSL-to-Windows Chrome automation."

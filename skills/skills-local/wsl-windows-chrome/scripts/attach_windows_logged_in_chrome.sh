@@ -18,6 +18,7 @@ CDP_PORT="${WSL_WINDOWS_CHROME_CDP_PORT:-9222}"
 RELAY_PORT="${WSL_WINDOWS_CHROME_RELAY_PORT:-39222}"
 ATTACH_WAIT_SECONDS="${WSL_WINDOWS_CHROME_ATTACH_WAIT_SECONDS:-40}"
 ATTACH_POLL_SECONDS="${WSL_WINDOWS_CHROME_ATTACH_POLL_SECONDS:-0.25}"
+REUSE_EXISTING_TARGET="${WSL_WINDOWS_CHROME_REUSE_EXISTING_TARGET:-true}"
 
 usage() {
   cat <<'USAGE'
@@ -25,12 +26,13 @@ Usage: attach_windows_logged_in_chrome.sh [options]
 
 Attach from WSL to a dedicated Windows Chrome or Edge automation browser.
 Recommended Windows launch flags:
-  --remote-debugging-port=<port>
-  --user-data-dir=<non-default automation profile>
+  --remote-debugging-port=9222
+  --user-data-dir=C:\chrome-wsl-automation
+  --profile-directory=Default
 
-If the requested port is unavailable but the dedicated profile advertises a
-different active port in DevToolsActivePort, the helper automatically switches
-to that port before starting a relay.
+This helper is strict about reusing the persistent agent browser profile. If
+the dedicated profile advertises a different active port in DevToolsActivePort,
+the helper reports that mismatch for diagnosis but will not switch ports.
 
 IMPORTANT: This helper will NOT fall back to a fresh browser session.
 If the Windows automation browser CDP endpoint is not reachable, it will
@@ -39,9 +41,11 @@ fail immediately with diagnostic information and setup instructions.
 Options:
   --browser <chrome|edge>  Select the Windows browser family
   --session <name>         Bind playwright-cli commands to a named session
-  --port <port>            Override the Windows CDP port (default: 9222)
-  --user-data-dir <path>   Override the Windows automation user-data-dir
+  --port <port>            Override the Windows CDP port (default: 9222; use 9222 unless explicitly required)
+  --user-data-dir <path>   Override the Windows automation user-data-dir (default: C:\chrome-wsl-automation)
   --url <url>              Navigate after attach or open
+  --no-reuse-existing-target
+                          Do not activate an already-open matching target URL before attach
   --relay-port <port>      Override the WSL-visible relay port (default: 39222)
   --attach-only            (Ignored, default behavior) Always fail instead of opening fresh browser
   --status                 Print detection and reachability status without attaching
@@ -61,6 +65,7 @@ print_setup_hint() {
 Start $BROWSER_LABEL on Windows with:
   --remote-debugging-port=$REQUESTED_CDP_PORT
   --user-data-dir="$WINDOWS_USER_DATA_DIR_RESOLVED"
+  --profile-directory=Default
 
 Launcher helper:
   bash "$SCRIPT_DIR/print_windows_automation_browser_launcher.sh" --browser "$BROWSER" --port "$REQUESTED_CDP_PORT" --user-data-dir "$WINDOWS_USER_DATA_DIR_RESOLVED"
@@ -71,6 +76,10 @@ EOF
 
 Detected active automation browser port from "$ACTIVE_PORT_PATH":
   $DISCOVERED_CDP_PORT
+
+This skill will not switch to that port automatically. Relaunch the dedicated
+automation browser with --remote-debugging-port=$REQUESTED_CDP_PORT and
+--profile-directory=Default so login state stays in the canonical agent profile.
 EOF
   fi
 }
@@ -197,6 +206,7 @@ fail_or_fallback() {
     printf '  "--remote-debugging-address=0.0.0.0",\n'
     printf '  "--remote-debugging-port=%s",\n' "$REQUESTED_CDP_PORT"
     printf '  "--user-data-dir=\"%s\"",\n' "$WINDOWS_USER_DATA_DIR_RESOLVED"
+    printf '  "--profile-directory=Default",\n'
     printf '  "--new-window"'
     if [[ -n "$URL" ]]; then
       printf ',\n  "%s"' "$URL"
@@ -228,15 +238,58 @@ WSL_VERIFY
   return 1
 }
 
+activate_existing_target_page() {
+  local endpoint="$1"
+  local http_base
+  local target_lines=()
+  local target_id
+  local target_url
+  local target_title
+  local match_reason
+
+  if [[ -z "$URL" || "$REUSE_EXISTING_TARGET" != true ]]; then
+    return 1
+  fi
+
+  http_base="$(wsl_windows_chrome_http_base_from_ws_endpoint "$endpoint")" || return 1
+  mapfile -t target_lines < <(wsl_windows_chrome_find_target_tab "$http_base" "$URL" 2>/dev/null) || return 1
+  if [[ "${#target_lines[@]}" -lt 2 || -z "${target_lines[0]}" ]]; then
+    return 1
+  fi
+
+  target_id="${target_lines[0]}"
+  target_url="${target_lines[1]}"
+  target_title="${target_lines[2]:-}"
+  match_reason="${target_lines[3]:-matched}"
+
+  if ! wsl_windows_chrome_activate_target_tab "$http_base" "$target_id"; then
+    return 1
+  fi
+
+  log "Found existing target page for $URL; activated tab $target_id and skipped navigation ($match_reason)."
+  if [[ "$VERBOSE" == true ]]; then
+    log "Existing target URL: $target_url"
+    if [[ -n "$target_title" ]]; then
+      log "Existing target title: $target_title"
+    fi
+  fi
+  return 0
+}
+
 attach_endpoint() {
   local endpoint="$1"
   local label="$2"
   local log_file
   local attach_pid
+  local reused_target=false
 
   if wsl_windows_chrome_session_active "$SESSION"; then
     log "Closing existing playwright-cli session '$SESSION' before attach to avoid stale-session collisions."
     wsl_windows_chrome_close_session "$SESSION"
+  fi
+
+  if activate_existing_target_page "$endpoint"; then
+    reused_target=true
   fi
 
   log "Trying playwright-cli attach via $endpoint"
@@ -247,8 +300,13 @@ attach_endpoint() {
   if wsl_windows_chrome_wait_for_session "$SESSION" "$ATTACH_WAIT_SECONDS" "$ATTACH_POLL_SECONDS"; then
     disown "$attach_pid" >/dev/null 2>&1 || true
     rm -f "$log_file"
-    if [[ -n "$URL" ]]; then
-      playwright-cli "-s=$SESSION" goto "$URL"
+    if [[ -n "$URL" && "$reused_target" != true ]]; then
+      local command_timeout="${WSL_WINDOWS_CHROME_PLAYWRIGHT_COMMAND_TIMEOUT_SECONDS:-15}"
+      if ! timeout "$command_timeout" playwright-cli "-s=$SESSION" goto "$URL"; then
+        log "Attached through $label, but navigation to $URL did not complete within ${command_timeout}s."
+        wsl_windows_chrome_close_session "$SESSION"
+        return 1
+      fi
     fi
     log "Attached through $label"
     return 0
@@ -329,6 +387,10 @@ while (($#)); do
       URL="$2"
       shift 2
       ;;
+    --no-reuse-existing-target)
+      REUSE_EXISTING_TARGET=false
+      shift
+      ;;
     --relay-port)
       RELAY_PORT="$2"
       shift 2
@@ -388,6 +450,7 @@ RELAY_REACHABLE=false
 LOCAL_CDP_READY=false
 GATEWAY_CDP_READY=false
 RELAY_CDP_READY=false
+PORT_MISMATCH=false
 
 if [[ "$JSON_OUTPUT" == true && "$STATUS_ONLY" == false ]]; then
   echo '--json currently requires --status.' >&2
@@ -413,14 +476,13 @@ if [[ "${#devtools_lines[@]}" -ge 4 ]]; then
 fi
 
 if [[ -n "$DISCOVERED_CDP_PORT" && "$DISCOVERED_CDP_PORT" != "$REQUESTED_CDP_PORT" && "$DIRECT_REACHABLE" != true ]]; then
+  PORT_MISMATCH=true
   if [[ "$VERBOSE" == true ]]; then
-    log "Requested port $REQUESTED_CDP_PORT is unavailable; trying automation profile port $DISCOVERED_CDP_PORT from $ACTIVE_PORT_PATH"
+    log "Dedicated profile reports active port $DISCOVERED_CDP_PORT from $ACTIVE_PORT_PATH, but fixed agent port is $REQUESTED_CDP_PORT; not switching ports."
   fi
-  RESOLVED_CDP_PORT="$DISCOVERED_CDP_PORT"
-  probe_candidate_port "$DISCOVERED_CDP_PORT" 'profile' || true
 fi
 
-if [[ -n "$RELAY_BIND_HOST" ]] && RELAY_WS_ENDPOINT="$(wsl_windows_chrome_http_ws_endpoint "$RELAY_BIND_HOST" "$RELAY_PORT" 2>/dev/null)"; then
+if [[ "$PORT_MISMATCH" != true && -n "$RELAY_BIND_HOST" ]] && RELAY_WS_ENDPOINT="$(wsl_windows_chrome_http_ws_endpoint "$RELAY_BIND_HOST" "$RELAY_PORT" 2>/dev/null)"; then
   RELAY_REACHABLE=true
   RELAY_CDP_READY=true
   if [[ -z "$PREFERRED_WS_ENDPOINT" ]]; then
@@ -437,7 +499,11 @@ if [[ "$STATUS_ONLY" == true ]]; then
   if [[ "$DIRECT_REACHABLE" == true || "$RELAY_CDP_READY" == true ]]; then
     STATUS_OK=true
   else
-    STATUS_ERROR="$BROWSER_LABEL is not exposing a reachable CDP endpoint on requested port $REQUESTED_CDP_PORT from WSL."
+    if [[ -n "$DISCOVERED_CDP_PORT" && "$DISCOVERED_CDP_PORT" != "$REQUESTED_CDP_PORT" ]]; then
+      STATUS_ERROR="$BROWSER_LABEL profile is active on port $DISCOVERED_CDP_PORT, but this skill requires fixed agent CDP port $REQUESTED_CDP_PORT."
+    else
+      STATUS_ERROR="$BROWSER_LABEL is not exposing a reachable CDP endpoint on requested port $REQUESTED_CDP_PORT from WSL."
+    fi
     STATUS_ERROR_PRESENT=true
   fi
 
@@ -478,11 +544,8 @@ for ((i = 0; i < ${#attach_endpoints[@]}; i++)); do
 done
 
 RELAY_TARGET_CDP_PORT="$RESOLVED_CDP_PORT"
-if [[ -n "$DISCOVERED_CDP_PORT" && "$DIRECT_REACHABLE" != true ]]; then
-  RELAY_TARGET_CDP_PORT="$DISCOVERED_CDP_PORT"
-fi
 
-if [[ -n "$RELAY_BIND_HOST" ]]; then
+if [[ "$PORT_MISMATCH" != true && -n "$RELAY_BIND_HOST" ]]; then
   if ! wsl_windows_chrome_has_powershell; then
     fail_or_fallback 'Direct CDP attach failed, and powershell.exe is unavailable so relay-assisted attach cannot be started.'
     exit $?

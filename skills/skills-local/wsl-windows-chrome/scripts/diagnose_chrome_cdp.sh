@@ -133,6 +133,7 @@ if [[ "${#devtools_lines[@]}" -ge 4 ]]; then
 
   if [[ "$discovered_port" != "$CDP_PORT" ]]; then
     echo "    ⚠  发现的端口 ($discovered_port) 与请求的端口 ($CDP_PORT) 不同"
+    echo "    固定 agent 浏览器规则要求使用端口 $CDP_PORT；请关闭错误端口实例后用固定参数重启。"
   fi
 else
   echo "  ✗ 未发现浏览器配置或进程"
@@ -181,7 +182,8 @@ else
   printf 'Start-Process $chrome -ArgumentList @(\n'
   printf '  "--remote-debugging-address=0.0.0.0",\n'
   printf '  "--remote-debugging-port=%s",\n' "$CDP_PORT"
-  printf '  "--user-data-dir=\"%s\""\n' "$WINDOWS_USER_DATA_DIR_RESOLVED"
+  printf '  "--user-data-dir=\"%s\"",\n' "$WINDOWS_USER_DATA_DIR_RESOLVED"
+  printf '  "--profile-directory=Default"\n'
   printf ')\n'
 
   echo ""

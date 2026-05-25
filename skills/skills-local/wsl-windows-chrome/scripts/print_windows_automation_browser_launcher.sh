@@ -18,7 +18,7 @@ Print a Windows .bat launcher that starts a dedicated automation browser.
 
 Options:
   --browser <chrome|edge>  Select the Windows browser family
-  --port <port>            Override the Windows CDP port (default: 9222)
+  --port <port>            Override the Windows CDP port (default: 9222; use 9222 unless explicitly required)
   --user-data-dir <path>   Override the Windows automation user-data-dir
   --help                   Show this help
 USAGE
@@ -61,8 +61,8 @@ cat <<EOF
 @echo off
 setlocal
 set "PREFERRED_CDP_PORT=$CDP_PORT"
-set "CDP_PORT="
 set "PROFILE_DIR=$WINDOWS_USER_DATA_DIR_RESOLVED"
+set "PROFILE_DIRECTORY=Default"
 set "BROWSER_EXE="
 EOF
 
@@ -73,15 +73,24 @@ done
 printf 'if not defined BROWSER_EXE (\n  echo %s executable not found.\n  exit /b 1\n)\n\n' "$BROWSER_LABEL"
 
 cat <<'EOF'
-for /f %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$preferred = [int]$env:PREFERRED_CDP_PORT; function Test-FreePort([int]$port) { try { $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port); $listener.Start(); $listener.Stop(); return $true } catch { return $false } }; $candidates = @($preferred, 9333, 9223, 9334, 9444, 9555); $selected = $null; foreach ($port in $candidates) { if (Test-FreePort $port) { $selected = $port; break } }; if (-not $selected) { for ($port = 9400; $port -lt 9500; $port++) { if (Test-FreePort $port) { $selected = $port; break } } }; if (-not $selected) { throw 'No free CDP port found for the automation browser.' }; Write-Output $selected"') do set "CDP_PORT=%%I"
-if not defined CDP_PORT (
-  echo Could not resolve a free CDP port.
+for /f %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "try { (Invoke-WebRequest -UseBasicParsing \"http://127.0.0.1:$env:PREFERRED_CDP_PORT/json/version\" -TimeoutSec 2) | Out-Null; Write-Output READY } catch { Write-Output NOT_READY }"') do set "CDP_READY=%%I"
+if "%CDP_READY%"=="READY" (
+  echo Existing dedicated automation browser CDP is reachable on 127.0.0.1:%PREFERRED_CDP_PORT%.
+  exit /b 0
+)
+
+for /f %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$port = [int]$env:PREFERRED_CDP_PORT; try { $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port); $listener.Start(); $listener.Stop(); Write-Output FREE } catch { Write-Output BUSY }"') do set "CDP_PORT_STATE=%%I"
+if not "%CDP_PORT_STATE%"=="FREE" (
+  echo CDP port %PREFERRED_CDP_PORT% is occupied but does not answer /json/version.
+  echo Close the conflicting process or restart the dedicated automation browser with the fixed agent profile.
   exit /b 1
 )
 
-echo Using CDP port %CDP_PORT%
+echo Using fixed CDP port %PREFERRED_CDP_PORT%
+echo Using persistent agent profile %PROFILE_DIR% / %PROFILE_DIRECTORY%
 start "" "%BROWSER_EXE%" ^
-  --remote-debugging-port=%CDP_PORT% ^
+  --remote-debugging-port=%PREFERRED_CDP_PORT% ^
   --remote-debugging-address=0.0.0.0 ^
-  --user-data-dir="%PROFILE_DIR%"
+  --user-data-dir="%PROFILE_DIR%" ^
+  --profile-directory="%PROFILE_DIRECTORY%"
 EOF

@@ -1,4 +1,4 @@
 interface:
   display_name: "WSL Windows Chrome"
-  short_description: "Attach from WSL to a dedicated Windows automation browser."
-  default_prompt: "In any project, use $wsl-windows-chrome first whenever an agent needs to connect to Windows Chrome, preserve authenticated browser state, or automate a logged-in Windows-side page."
+  short_description: "Attach from WSL to the persistent Windows Chrome agent profile."
+  default_prompt: "Use $wsl-windows-chrome first for browser automation. Reuse Windows Chrome at C:\\chrome-wsl-automation, profile Default, fixed CDP port 9222, and preserve cookies/storage/login state."

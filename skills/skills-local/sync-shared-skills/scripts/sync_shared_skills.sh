@@ -145,6 +145,9 @@ is_excluded_name() {
   local name="$1"
 
   case "$name" in
+    .bak.*|*.bak.*)
+      return 0
+      ;;
     .system|learned|imported)
       return 0
       ;;

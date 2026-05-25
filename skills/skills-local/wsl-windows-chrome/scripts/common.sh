@@ -311,6 +311,107 @@ print(f"ws://{host}:{port}{path}")
 PY
 }
 
+wsl_windows_chrome_http_base_from_ws_endpoint() {
+  local endpoint="$1"
+
+  ENDPOINT="$endpoint" python3 - <<'PY'
+import os
+from urllib.parse import urlparse
+
+endpoint = os.environ["ENDPOINT"]
+parsed = urlparse(endpoint)
+if parsed.scheme == "ws":
+    scheme = "http"
+elif parsed.scheme == "wss":
+    scheme = "https"
+else:
+    raise SystemExit(1)
+
+if not parsed.netloc:
+    raise SystemExit(1)
+
+print(f"{scheme}://{parsed.netloc}")
+PY
+}
+
+wsl_windows_chrome_find_target_tab() {
+  local base_url="$1"
+  local target_url="$2"
+  local json_payload
+
+  json_payload="$(wsl_windows_chrome_fetch_url "$base_url/json/list")" || return 1
+
+  JSON_PAYLOAD="$json_payload" TARGET_URL="$target_url" python3 - <<'PY'
+import json
+import os
+from urllib.parse import urlsplit, urlunsplit
+
+target_url = os.environ["TARGET_URL"]
+tabs = json.loads(os.environ["JSON_PAYLOAD"])
+
+def normalize_parts(url):
+    parts = urlsplit(url)
+    scheme = parts.scheme.lower()
+    netloc = parts.netloc.lower()
+    path = parts.path or "/"
+    return scheme, netloc, path, parts.query
+
+def normalized_without_fragment(url):
+    parts = urlsplit(url)
+    path = parts.path or "/"
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, parts.query, ""))
+
+try:
+    target_parts = normalize_parts(target_url)
+    target_no_fragment = normalized_without_fragment(target_url)
+except Exception:
+    raise SystemExit(1)
+
+matches = []
+for index, tab in enumerate(tabs):
+    if tab.get("type") != "page":
+        continue
+    tab_url = tab.get("url") or ""
+    tab_id = tab.get("id") or ""
+    if not tab_url or not tab_id:
+        continue
+    try:
+        tab_parts = normalize_parts(tab_url)
+        tab_no_fragment = normalized_without_fragment(tab_url)
+    except Exception:
+        continue
+
+    if tab_no_fragment == target_no_fragment:
+        score = 0
+        reason = "exact_without_fragment"
+    elif target_parts[:3] == tab_parts[:3] and not target_parts[3]:
+        score = 1
+        reason = "same_origin_path"
+    else:
+        continue
+
+    matches.append((score, index, reason, tab))
+
+if not matches:
+    raise SystemExit(1)
+
+_, _, reason, tab = sorted(matches, key=lambda item: (item[0], item[1]))[0]
+print(tab.get("id") or "")
+print(tab.get("url") or "")
+print((tab.get("title") or "").replace("\n", " "))
+print(reason)
+PY
+}
+
+wsl_windows_chrome_activate_target_tab() {
+  local base_url="$1"
+  local target_id="$2"
+  local result
+
+  result="$(wsl_windows_chrome_fetch_url "$base_url/json/activate/$target_id")" || return 1
+  [[ "$result" == *"Target activated"* ]]
+}
+
 wsl_windows_chrome_cdp_probe() {
   local endpoint="$1"
   local escaped_endpoint
@@ -388,13 +489,13 @@ wsl_windows_chrome_wait_for_session() {
   local session="$1"
   local wait_seconds="$2"
   local poll_seconds="$3"
-  local attempts
-  local i
+  local deadline=$((SECONDS + wait_seconds))
+  local command_timeout="${WSL_WINDOWS_CHROME_PLAYWRIGHT_COMMAND_TIMEOUT_SECONDS:-5}"
 
-  attempts="$(awk "BEGIN { n = $wait_seconds / $poll_seconds; if (n < 1) n = 1; print int(n + 0.999) }")"
-
-  for ((i = 0; i < attempts; i++)); do
-    if playwright-cli "-s=$session" snapshot >/dev/null 2>&1; then
+  while ((SECONDS < deadline)); do
+    if timeout "$command_timeout" playwright-cli list 2>/dev/null |
+      grep -A4 -F -- "- $session:" |
+      grep -q 'status: open'; then
       return 0
     fi
     sleep "$poll_seconds"
@@ -405,12 +506,16 @@ wsl_windows_chrome_wait_for_session() {
 
 wsl_windows_chrome_session_active() {
   local session="$1"
-  playwright-cli "-s=$session" snapshot >/dev/null 2>&1
+  local command_timeout="${WSL_WINDOWS_CHROME_PLAYWRIGHT_COMMAND_TIMEOUT_SECONDS:-5}"
+  timeout "$command_timeout" playwright-cli list 2>/dev/null |
+    grep -A4 -F -- "- $session:" |
+    grep -q 'status: open'
 }
 
 wsl_windows_chrome_close_session() {
   local session="$1"
-  playwright-cli "-s=$session" close >/dev/null 2>&1 || true
+  local command_timeout="${WSL_WINDOWS_CHROME_PLAYWRIGHT_COMMAND_TIMEOUT_SECONDS:-5}"
+  timeout "$command_timeout" playwright-cli "-s=$session" close >/dev/null 2>&1 || true
 }
 
 wsl_windows_chrome_relay_bind_host() {

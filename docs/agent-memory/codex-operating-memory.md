@@ -1,6 +1,6 @@
 # Codex Operating Memory
 
-Last reviewed: 2026-05-23
+Last reviewed: 2026-05-24
 
 ## Autonomy
 
@@ -17,9 +17,20 @@ Last reviewed: 2026-05-23
 - For browser work from WSL, use the `wsl-windows-chrome` skill first.
 - Do not add or use Chrome/Browser MCP for normal browser automation unless the
   user explicitly reverses this preference.
-- Browser tasks should attach to the dedicated Windows Chrome/Edge automation
-  profile through:
+- Browser tasks must attach to the dedicated Windows Chrome agent profile
+  through:
   `skills/skills-local/wsl-windows-chrome/scripts/attach_windows_logged_in_chrome.sh`
+- The canonical browser state is Windows Chrome with
+  `--remote-debugging-port=9222`,
+  `--user-data-dir=C:\chrome-wsl-automation`, and
+  `--profile-directory=Default`.
+- Preserve that profile's cookies, LocalStorage, SessionStorage, extensions,
+  site permissions, open tabs, and login state. Do not use temporary
+  user-data-dir, incognito, guest, bundled Chromium, WSL/Linux browser, or
+  fresh Playwright profiles for normal browser automation.
+- Never clear login state or site storage for `work.weixin.qq.com`,
+  `weixin.qq.com`, or `qq.com`. If WeCom/WeChat login expires, refresh or ask
+  the user to scan again; do not delete or reset the profile.
 - If the dedicated Windows CDP endpoint is unavailable, stop with diagnostics.
   Do not fall back to a fresh WSL/Linux Playwright browser.
 

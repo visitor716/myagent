@@ -1,0 +1,13 @@
+{
+  "name": "windows-document-organizer",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/windows-document-organizer",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/windows-document-organizer",
+    "/home/zhanxp/.claude/skills/windows-document-organizer",
+    "/home/zhanxp/.hermes/skills/myagent/windows-document-organizer"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for safely organizing Windows-mounted document folders with inventories, exact duplicate reports, reviewed move plans, and traceable indexes."
+}

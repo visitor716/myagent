@@ -42,7 +42,7 @@ Options:
   --port <port>              Override the Windows CDP port (default: 9222)
   --user-data-dir <path>     Override the Windows automation user-data-dir
   --relay-port <port>        Override the WSL-visible relay port (default: 39222)
-  --allow-fallback           Allow fallback to fresh browser (not recommended)
+  --allow-fallback           Legacy no-op; fallback browsers are prohibited
   --logs-dir <path>          Directory to save logs (default: logs/stability)
   --json                     Output results as JSON
   --verbose                  Print extra diagnostics
@@ -265,14 +265,13 @@ run_single_test() {
     wsl_windows_chrome_close_session "wsl-windows-chrome" 2>/dev/null || true
   else
     attach_exit_code=$?
-    # Check if it fallback or failed
+    # Fallback should never happen; keep this only as a regression detector.
     if grep -q "ATTACH_MODE=fallback" "$test_log_file" 2>/dev/null; then
       result="fallback"
       mode="fallback"
       FALLBACK_COUNT=$((FALLBACK_COUNT + 1))
-      reason="Fallback to fresh browser"
+      reason="Prohibited fallback to fresh browser detected"
       FAILURE_REASONS["$reason"]=$((FAILURE_REASONS["$reason"] + 1))
-      # Clean up fallback session
       wsl_windows_chrome_close_session "wsl-windows-chrome" 2>/dev/null || true
     else
       result="failed"
@@ -330,7 +329,8 @@ while (($#)); do
       shift 2
       ;;
     --allow-fallback)
-      ALLOW_FALLBACK=true
+      ALLOW_FALLBACK=false
+      echo "--allow-fallback is ignored: fallback browsers are prohibited." >&2
       shift
       ;;
     --logs-dir)

@@ -14,13 +14,13 @@ usage() {
   cat <<'USAGE'
 Usage: print_windows_chrome_ws_endpoint.sh [options]
 
-If the requested port is unavailable but the dedicated profile advertises a
-different active port in DevToolsActivePort, this helper automatically uses
-that port.
+This helper reuses the fixed persistent agent browser profile. If the
+dedicated profile advertises a different active port in DevToolsActivePort,
+the helper reports that mismatch but will not switch ports.
 
 Options:
   --browser <chrome|edge>  Select the Windows browser family
-  --port <port>            Override the Windows CDP port (default: 9222)
+  --port <port>            Override the Windows CDP port (default: 9222; use 9222 unless explicitly required)
   --user-data-dir <path>   Override the Windows automation user-data-dir
   --relay-port <port>      Override the WSL-visible relay port
   --help                   Show this help
@@ -64,12 +64,14 @@ REQUESTED_CDP_PORT="$CDP_PORT"
 DISCOVERED_CDP_PORT=''
 ACTIVE_PORT_PATH=''
 RESOLVED_CDP_PORT="$CDP_PORT"
+PORT_MISMATCH=false
 
 print_setup_hint() {
   cat <<EOF
 Start $BROWSER_LABEL on Windows with:
   --remote-debugging-port=$REQUESTED_CDP_PORT
   --user-data-dir="$WINDOWS_USER_DATA_DIR_RESOLVED"
+  --profile-directory=Default
 
 Launcher helper:
   bash "$SCRIPT_DIR/print_windows_automation_browser_launcher.sh" --browser "$BROWSER" --port "$REQUESTED_CDP_PORT" --user-data-dir "$WINDOWS_USER_DATA_DIR_RESOLVED"
@@ -80,6 +82,10 @@ EOF
 
 Detected active automation browser port from "$ACTIVE_PORT_PATH":
   $DISCOVERED_CDP_PORT
+
+This helper will not switch to that port automatically. Relaunch the dedicated
+automation browser with --remote-debugging-port=$REQUESTED_CDP_PORT and
+--profile-directory=Default.
 EOF
   fi
 }
@@ -109,20 +115,19 @@ if [[ "${#devtools_lines[@]}" -ge 4 ]]; then
 fi
 
 if [[ -n "$DISCOVERED_CDP_PORT" && "$DISCOVERED_CDP_PORT" != "$REQUESTED_CDP_PORT" ]]; then
-  if ws_endpoint="$(wsl_windows_chrome_http_ws_endpoint '127.0.0.1' "$DISCOVERED_CDP_PORT" 2>/dev/null)"; then
-    printf '%s\n' "$ws_endpoint"
-    exit 0
-  fi
-  if [[ -n "$WINDOWS_GATEWAY" ]] && ws_endpoint="$(wsl_windows_chrome_http_ws_endpoint "$WINDOWS_GATEWAY" "$DISCOVERED_CDP_PORT" 2>/dev/null)"; then
-    printf '%s\n' "$ws_endpoint"
-    exit 0
-  fi
-  RESOLVED_CDP_PORT="$DISCOVERED_CDP_PORT"
+  PORT_MISMATCH=true
+  RESOLVED_CDP_PORT="$REQUESTED_CDP_PORT"
 fi
 
-if [[ -n "$RELAY_BIND_HOST" ]] && ws_endpoint="$(wsl_windows_chrome_http_ws_endpoint "$RELAY_BIND_HOST" "$RELAY_PORT" 2>/dev/null)"; then
+if [[ "$PORT_MISMATCH" != true && -n "$RELAY_BIND_HOST" ]] && ws_endpoint="$(wsl_windows_chrome_http_ws_endpoint "$RELAY_BIND_HOST" "$RELAY_PORT" 2>/dev/null)"; then
   printf '%s\n' "$ws_endpoint"
   exit 0
+fi
+
+if [[ "$PORT_MISMATCH" == true ]]; then
+  echo "Dedicated profile is active on port $DISCOVERED_CDP_PORT, but fixed agent CDP port $REQUESTED_CDP_PORT is required." >&2
+  print_setup_hint >&2
+  exit 1
 fi
 
 if [[ -z "$RELAY_BIND_HOST" ]]; then

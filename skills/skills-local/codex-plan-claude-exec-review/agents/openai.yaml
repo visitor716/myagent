@@ -1,0 +1,7 @@
+interface:
+  display_name: "Codex Plan Claude Exec Review"
+  short_description: "Hand Codex plans to Claude Code and review the result."
+  default_prompt: "Use $codex-plan-claude-exec-review when Codex should produce a plan, hand it to a Claude Code worker in an isolated worktree, and then review Claude's completed diff before accepting it."
+
+policy:
+  allow_implicit_invocation: true

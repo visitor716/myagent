@@ -1,0 +1,4 @@
+interface:
+  display_name: "Windows Document Organizer"
+  short_description: "Safe Windows folder organization"
+  default_prompt: "Organize this Windows-mounted document folder safely. Inventory first, identify exact duplicates, preserve existing organized subtrees, draft and dry-run a move plan, then create traceable index logs."

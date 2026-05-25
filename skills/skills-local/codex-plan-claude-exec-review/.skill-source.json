@@ -1,0 +1,14 @@
+{
+  "name": "codex-plan-claude-exec-review",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/codex-plan-claude-exec-review",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/codex-plan-claude-exec-review",
+    "/home/zhanxp/.agents/skills/codex-plan-claude-exec-review",
+    "/home/zhanxp/.claude/skills/codex-plan-claude-exec-review",
+    "/home/zhanxp/.hermes/skills/myagent/codex-plan-claude-exec-review"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local workflow skill for Codex planning, Claude Code worktree implementation handoff, and Codex read-only review."
+}
