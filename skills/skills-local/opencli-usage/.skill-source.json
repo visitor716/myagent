@@ -1,0 +1,8 @@
+{
+  "source": "github",
+  "repository": "jackwener/OpenCLI",
+  "path": "skills/opencli-usage",
+  "installed_at": "2026-05-25",
+  "package": "@jackwener/opencli@1.8.0",
+  "notes": "Imported as a repo-managed local skill so runtime skills can be symlinked and synced through myagent."
+}
