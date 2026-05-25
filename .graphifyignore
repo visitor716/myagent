@@ -1,0 +1,27 @@
+.git/
+.omx/
+.playwright-cli/
+graphify-out/
+
+# Runtime snapshots and generated backups are too noisy for project structure maps.
+configs/codex/runtime/
+configs/claude code/
+configs/claude code/private.local/
+configs/claude code/global-backups/
+configs/claude code/settings-backups/
+configs/claude code/claude-to-im/data/
+configs/claude code/claude-to-im/runtime/
+configs/claude code/plugins/marketplaces/
+docs/agent-memory/heartbeat.md
+
+# Downloaded third-party skills drown out local myagent structure.
+skills/skills-download/
+skills/skills-local/*.bak.*/
+
+# Generated/runtime dependency artifacts.
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/.playwright/
+**/.playwright*/
+**/*:Zone.Identifier
