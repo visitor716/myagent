@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository preserves reusable assets from day-to-day AI work and synchronizes them into other projects or runtime tool directories. It is the source of truth for user-managed agent skills, workflow notes, helper scripts, and local agent configuration. Keep custom skills under `skills/`: downloaded skills live in `skills/skills-download/`, local/private workflow skills live in `skills/skills-local/`, and each skill should include `SKILL.md` plus `.skill-source.json`. Configuration templates live in `configs/`, split between `configs/claude-code/` and `configs/codex/`. Operational helper scripts live in `scripts/`; samples and ad hoc tests are under `scripts/Test/`. Longer design and migration notes belong in `docs/`.
+This repository preserves everything worth keeping from learning AI and using AI, then synchronizes reusable pieces into other projects or runtime tool directories. It is the source of truth for user-managed agent skills, workflow notes, helper scripts, local agent configuration, operating memory, and repeated AI-use procedures. Keep custom skills under `skills/`: downloaded skills live in `skills/skills-download/`, local/private workflow skills live in `skills/skills-local/`, and each skill should include `SKILL.md` plus `.skill-source.json`. Configuration templates live in `configs/`, split between `configs/claude code/` and `configs/codex/`. Operational helper scripts live in `scripts/`; samples and ad hoc tests are under `scripts/Test/`. Longer design and migration notes belong in `docs/`.
 
 ## Build, Test, and Development Commands
 
@@ -42,7 +42,7 @@ Recent history follows Conventional Commits, for example `feat(skills): ...`, `f
 
 ## Security & Configuration Tips
 
-Never commit real API keys, tokens, or machine-local secrets. Use `.env.example`, `${VAR_NAME}` placeholders, and ignored local files such as `configs/claude-code/.env` or `configs/codex/config.local.toml`. Treat `~/.codex/skills/` and `~/.claude/skills/` as runtime mount points, not primary storage.
+Never commit real API keys, tokens, or machine-local secrets. Use `.env.example`, `${VAR_NAME}` placeholders, and ignored local files such as `configs/claude code/.env` or `configs/codex/config.local.toml`. Treat `~/.codex/skills/` and `~/.claude/skills/` as runtime mount points, not primary storage.
 
 ## Codex Runtime Preferences
 
@@ -62,3 +62,26 @@ Long-term Codex memory lives under `docs/agent-memory/`. Update
 `open-loops.md` for paused follow-ups, `decisions.md` for durable choices, and
 `codex-operating-memory.md` for stable preferences. Keep these files free of
 secrets.
+
+## AI Work Archive Workflow
+
+Treat this repository as the durable archive for the user's AI learning and AI
+usage, not just a scripts folder or a Codex workspace. Important workflow
+context should become plain text under `docs/`, durable agent operating memory
+belongs under `docs/agent-memory/`, reusable procedures should become skills
+under `skills/skills-local/`, and runtime configuration should flow through
+`configs/sync.sh` so future threads do not rediscover the same setup.
+
+For long-running or ambitious work, define the verifier before declaring a goal
+complete. Prefer concrete checks such as `bash configs/sync.sh validate`,
+targeted tests, syntax checks, reproducible bug cases, or a written validation
+matrix. If the work produces an artifact, keep it reviewable in the repo.
+
+Use steering and queueing naturally: if the user redirects an active task, apply
+the newest instruction locally and continue; if they add follow-up work, finish
+the current verified step and then handle the queued item. Package recurring
+workflows as skills once the useful pattern is clear.
+
+Do not enable startup MCP servers just for convenience. Browser work uses the
+`wsl-windows-chrome` skill, and unsupported WSL `cmd /c npx` MCP startup blocks
+should be removed from Codex runtime config.

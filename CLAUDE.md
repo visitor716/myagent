@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Source-of-truth repository for user-managed custom agent skills (Claude Code and Codex), plus configuration templates and utility scripts. This is not a traditional software project — there is no top-level build, lint, or test suite.
+Source-of-truth repository for everything worth preserving from learning AI and
+using AI: custom agent skills, configuration templates, utility scripts,
+workflow notes, browser/proxy routines, and durable operating memory. This is
+not a traditional software project — there is no top-level build, lint, or test
+suite.
 
 ## Repo structure
 

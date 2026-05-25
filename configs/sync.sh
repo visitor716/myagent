@@ -33,6 +33,10 @@ CODEX_SYSTEMD_SOURCE_DIR="$SCRIPT_DIR/codex/systemd"
 CODEX_SYSTEMD_RUNTIME_DIR="$HOME/.config/systemd/user"
 CODEX_FULL_AUTO_BLOCK_START="# >>> codex full-auto defaults >>>"
 CODEX_FULL_AUTO_BLOCK_END="# <<< codex full-auto defaults <<<"
+CODEX_DISABLED_STARTUP_MCP_TABLES=(
+    "[mcp_servers.chrome-devtools]"
+    "[mcp_servers.context7]"
+)
 BACKUP_STAMP="$(date +%Y%m%d_%H%M%S)"
 
 # 颜色定义
@@ -237,6 +241,47 @@ upsert_toml_table_key_in_place() {
     mv "$tmp_file" "$file"
 }
 
+remove_toml_table_in_place() {
+    local file="$1"
+    local table="$2"
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    awk -v table="$table" '
+        /^[[:space:]]*\[/ {
+            skip = ($0 == table)
+            if (skip) {
+                removed = 1
+                next
+            }
+        }
+        skip { next }
+        { print }
+        END {
+            if (removed) {
+                exit 2
+            }
+        }
+    ' "$file" > "$tmp_file" || {
+        local status=$?
+        if [[ $status -ne 2 ]]; then
+            rm -f "$tmp_file"
+            return "$status"
+        fi
+    }
+
+    mv "$tmp_file" "$file"
+}
+
+remove_codex_unsupported_startup_mcp_in_place() {
+    local file="$1"
+    local table
+
+    for table in "${CODEX_DISABLED_STARTUP_MCP_TABLES[@]}"; do
+        remove_toml_table_in_place "$file" "$table"
+    done
+}
+
 install_codex_full_auto_config() {
     local target="$1"
     local label="$2"
@@ -253,6 +298,7 @@ install_codex_full_auto_config() {
     upsert_toml_root_key_in_place "$tmp_file" "approval_policy" '"never"'
     upsert_toml_root_key_in_place "$tmp_file" "sandbox_mode" '"danger-full-access"'
     upsert_toml_table_key_in_place "$tmp_file" "[notice]" "hide_full_access_warning" "true"
+    remove_codex_unsupported_startup_mcp_in_place "$tmp_file"
     write_if_changed "$tmp_file" "$target" "$label" "$mode"
 }
 

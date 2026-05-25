@@ -69,6 +69,24 @@ bash configs/sync.sh codex-autonomy
   `cremote` 等 bash 入口
 
 浏览器自动化默认走 `wsl-windows-chrome` skill，不配置 Chrome/Browser MCP。
+安装过程也会清理已知在 WSL 中会产生启动噪音的 `chrome-devtools` 和
+`context7` MCP 表；如需为某个具体任务启用 MCP，应临时显式配置，而不是放回
+默认启动配置。
+
+### Codex 高效工作流映射
+
+当前项目按“持久线程 + 共享记忆 + 技能 + 自动化 + 可验证目标”的方式组织：
+
+- 持久上下文：`docs/agent-memory/codex-operating-memory.md`、`decisions.md`、
+  `open-loops.md`
+- 可复用工作流：`skills/skills-local/<skill>/SKILL.md`
+- 本机自动化：`scripts/codex_heartbeat.py` 和 `codex-heartbeat.timer`
+- 运行时模板：`configs/codex/config.toml` 和
+  `configs/codex/bash_aliases.full-auto.sh`
+- 验证入口：`bash configs/sync.sh validate`
+
+长任务应先写清验收方式，例如测试、复现步骤、验证矩阵或必须持续通过的工作流；
+不要只把“继续做完”当成目标。
 
 ### 5. 备份 Codex 全套可复用配置
 

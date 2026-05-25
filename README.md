@@ -1,10 +1,17 @@
-# MyAgent Skill Source of Truth
+# MyAgent AI Work Archive
 
-This repository is the source of truth for user-managed custom skills.
+This repository is the source of truth for everything worth preserving from
+learning AI and using AI: custom skills, workflow notes, local automation,
+agent configuration, browser/proxy routines, and reusable operating memory.
 
-## Canonical path
+It is not only a skill repository. Skills are one storage format inside the
+larger archive of AI-use experience that should be reusable across tools,
+machines, projects, and future agent sessions.
 
-- Source of truth: `/home/zhanxp/projects/myagent/skills/`
+## Canonical paths
+
+- Project source of truth: `/home/zhanxp/projects/myagent/`
+- Skill source of truth: `/home/zhanxp/projects/myagent/skills/`
 - Runtime entrypoints: `~/.codex/skills/` and `~/.claude/skills/`
 
 ## Rules
@@ -18,7 +25,7 @@ This repository is the source of truth for user-managed custom skills.
 
 本项目同时管理 Claude Code 和 Codex 的配置模板：
 
-- **`configs/claude-code/settings.json`** — Claude Code 配置模板（已脱敏）
+- **`configs/claude code/settings.json`** — Claude Code 配置模板（已脱敏）
 - **`configs/codex/config.toml`** — Codex 配置模板
 - **`configs/codex/bash_aliases.full-auto.sh`** — Codex 全自动 bash 入口模板
 - **`configs/sync.sh`** — 配置同步脚本（支持 backup / restore / codex-full-auto / validate）

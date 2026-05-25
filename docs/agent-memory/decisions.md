@@ -1,6 +1,36 @@
 # Decisions
 
-Last reviewed: 2026-05-23
+Last reviewed: 2026-05-25
+
+## 2026-05-25 - Use MyAgent As The AI Work Archive
+
+Decision: Treat `/home/zhanxp/projects/myagent` as the durable archive for
+everything worth preserving from the user's AI learning and AI usage:
+operating memory, reusable skills, configuration templates, workflow notes, and
+local automation on this machine.
+
+Context: The high-leverage Codex workflow depends on persistent threads,
+shared memory, reusable skills, automation, and explicit goal verifiers. This
+repo already stores those surfaces, so it should be the first place future
+agents update durable context rather than leaving it only in chat. The broader
+project scope is the user's accumulated AI-use experience, not only Codex.
+
+Directive: Put durable preferences in `docs/agent-memory/codex-operating-memory.md`,
+paused follow-ups in `docs/agent-memory/open-loops.md`, reusable workflows in
+`skills/skills-local/`, and runtime template changes under `configs/`.
+
+## 2026-05-25 - Prune Unsupported Codex Startup MCP Blocks
+
+Decision: Keep Codex startup MCP empty by default and remove known unsupported
+WSL `cmd /c npx` MCP tables during `codex-full-auto` and `codex-autonomy`.
+
+Context: Browser automation should use `wsl-windows-chrome`, while the runtime
+`chrome-devtools` and `context7` MCP entries launch through Windows `cmd` from
+WSL and show as unsupported.
+
+Directive: Do not re-add `mcp_servers.chrome-devtools` or
+`mcp_servers.context7` to Codex startup config unless the user explicitly asks
+for MCP for a specific task.
 
 ## 2026-05-23 - Keep Codex High-Autonomy By Default
 
