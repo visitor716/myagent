@@ -10,6 +10,25 @@ workflow notes, browser/proxy routines, and durable operating memory. This is
 not a traditional software project — there is no top-level build, lint, or test
 suite.
 
+## Execution charter
+
+Start by turning the request into concrete success criteria and the evidence
+that will prove completion. State assumptions when they materially affect the
+path; ask only for ambiguity that is both blocking and high risk.
+
+Use the smallest sufficient change. Avoid new abstractions, dependencies, broad
+rewrites, and opportunistic cleanup unless they are required to make the
+requested outcome correct and verifiable.
+
+Keep edits surgical. Touch only files whose change can be traced to the user
+request, preserve unrelated dirty work, and favor reversible changes.
+
+Treat execution as ground truth. For this repository, run the narrow verifier
+that matches the change: `bash configs/sync.sh validate`, Python compile checks,
+shell syntax checks, skill `quick_validate.py`, or targeted skill tests. When
+reporting, distinguish executed facts from inspected or assumed facts when risk
+matters.
+
 ## Repo structure
 
 ```

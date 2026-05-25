@@ -28,6 +28,25 @@ bash configs/sync.sh restore
 
 Backs up runtime configs into this repo or restores repo templates to runtime locations. Review and redact secrets before committing backups.
 
+## AI Coding Charter
+
+Before changing files, convert the request into success criteria and the
+evidence that will prove them. State assumptions only when they affect the path;
+ask only for truly blocking, high-risk ambiguity.
+
+Prefer the smallest sufficient change. Do not add abstractions, dependencies,
+broad rewrites, or cleanup outside the stated goal unless they are required for
+correctness and verification.
+
+Keep edits surgical: touch only files whose change can be traced to the
+request, preserve unrelated dirty work, and make reversible changes by default.
+
+Verify with execution, not confidence. For this repo that usually means
+`bash configs/sync.sh validate`, `python -m py_compile` for changed Python,
+`bash -n` for changed shell, skill `quick_validate.py`, or targeted tests under
+the changed skill. Final reports should name changed files, checks run, and
+residual risk.
+
 ## Coding Style & Naming Conventions
 
 Use Markdown for documentation and keep instructions direct. Shell scripts should use `set -euo pipefail`, quote variables, and keep idempotent operations safe to re-run. Python scripts should prefer clear functions, explicit paths, and standard-library dependencies unless a skill documents otherwise. Skill directories use lowercase, hyphenated names such as `daily-report-table` or `cc-switch-skill`.
