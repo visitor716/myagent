@@ -1,6 +1,6 @@
 ---
 name: codex-plan-claude-exec-review
-description: Use when the user wants Codex to create or refine a plan, hand that plan to a Claude Code worker for implementation in an isolated worktree, then have Codex perform a read-only review of the completed Claude work. Triggers include "把计划交给 Claude 做", "Claude 做完你 review", "Codex 规划 Claude 执行 Codex 检查", "plan -> Claude execute -> Codex review", and similar handoff/review workflows.
+description: Use when the user wants Codex to create or refine a plan, hand that plan to a Claude Code worker for implementation in an isolated worktree, then have Codex perform a read-only review of the completed Claude work. Triggers include "把计划交给 Claude 做", "Claude 做完你 review", "Codex 规划 Claude 执行 Codex 检查", "plan to Claude execute to Codex review", and similar handoff/review workflows.
 metadata:
   short-description: Hand Codex plans to Claude Code and review the result
 ---

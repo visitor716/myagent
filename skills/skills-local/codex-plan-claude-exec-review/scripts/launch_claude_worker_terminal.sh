@@ -109,6 +109,10 @@ done
 [[ -n "$PROMPT_FILE" ]] || die "--prompt-file is required"
 [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
 [[ -d "$WORKTREE" ]] || die "Worktree not found: $WORKTREE"
+case "$TERMINAL_MODE" in
+  tab|window) ;;
+  *) die "--terminal-mode must be tab or window" ;;
+esac
 
 TMUX_SESSION="claude-${TASK_SLUG}"
 
@@ -149,14 +153,15 @@ if [[ ! -f "$WT_PATH" ]]; then
   exit 0
 fi
 
-# Build wt.exe arguments
+# Build wt.exe arguments. Windows Terminal uses subcommands such as
+# `new-tab`; `--tab` is not a valid wt.exe option and opens an error dialog.
 WT_ARGS=()
 
 if [[ "$TERMINAL_MODE" == "window" ]]; then
-  WT_ARGS+=("--window" "0")
+  WT_ARGS+=("new-tab")
 else
   WT_ARGS+=("--window" "0")
-  WT_ARGS+=("--tab")
+  WT_ARGS+=("new-tab")
 fi
 
 # Build the WSL command line that wt.exe will execute
@@ -179,6 +184,6 @@ vlog "WSL command: $WSL_CMD"
 log "Launching Windows Terminal..."
 
 # Execute wt.exe
-run "$WT_PATH" "${WT_ARGS[@]}" "--" "${FINAL_CMD[@]}"
+run "$WT_PATH" "${WT_ARGS[@]}" "${FINAL_CMD[@]}"
 
 log "Done."
