@@ -5,12 +5,12 @@ description: Diagnose and operate cc-switch from WSL or Windows-backed homes. Us
 
 # CC Switch Skill
 
-Use this skill to manage `cc-switch`, especially from WSL where Linux and Windows may have separate `~/.cc-switch` databases.
+Use this skill to manage `cc-switch`. The default contract is that the Windows GUI and this skill operate the same `cc-switch` configuration store: the GUI is the human interface, and this skill is the agent interface. In WSL, prefer the Windows GUI's configured home as the shared operation target unless the user explicitly asks for WSL-local or isolated worker state.
 
 Canonical paths:
 
-- WSL database: `~/.cc-switch/cc-switch.db`
-- Windows database from WSL: `/mnt/c/Users/<WindowsUser>/.cc-switch/cc-switch.db`
+- Shared GUI database from WSL: `/mnt/c/Users/<WindowsUser>/.cc-switch/cc-switch.db` by default, or the home derived from the Windows app Store override.
+- WSL-local database: `~/.cc-switch/cc-switch.db` (explicit `--wsl` only; not the normal shared GUI object)
 - Windows app Store override from WSL: `/mnt/c/Users/<WindowsUser>/AppData/Roaming/com.ccswitch.desktop/app_paths.json`
 - Windows app log from WSL: `/mnt/c/Users/<WindowsUser>/.cc-switch/logs/cc-switch.log`
 - Isolated worker database: `<worker-home>/.cc-switch/cc-switch.db`
@@ -21,7 +21,8 @@ Canonical paths:
 
 - Treat provider secrets as sensitive. Prefer `provider list`, `provider current`, and `config validate`; do not print full config blobs unless the user explicitly asks.
 - Distinguish **providers/APIs** from **models**. `provider list` and `config validate` count providers, not the model names attached to a provider.
-- If the user says “cc-switch 软件”, “Windows app”, “GUI”, or reports counts seen in the Windows app, assume the Windows database is the likely source of truth until proven otherwise.
+- For normal provider/model/list/switch actions, use the same cc-switch home as the Windows GUI. Do not choose the WSL-local database just because it has more providers.
+- If the user says “cc-switch 软件”, “Windows app”, “GUI”, or reports counts seen in the Windows app, treat the GUI store as the source of truth and operate that same store from the skill.
 - Before editing providers on an existing database, create a backup with `config backup` or copy the target `cc-switch.db`.
 - Before editing the Windows app Store override, back up `app_paths.json` and both likely databases when they exist.
 - If the Windows GUI reports `Database Initialization Failed` / `database is locked` and the displayed path starts with `\\wsl.localhost\...`, treat cross-OS SQLite locking as the likely cause. Prefer redirecting the GUI to `C:\Users\<WindowsUser>\.cc-switch`; manage the WSL database from WSL CLI instead of forcing the GUI to open it over UNC.
@@ -31,10 +32,10 @@ Canonical paths:
 ## Default Workflow
 
 1. Run `bash scripts/cc-switch-run.sh doctor` first.
-2. If the Windows app is the source of truth, use `--windows`.
+2. For normal user-facing `cc-switch` actions, use the default mode or `--gui`; this targets the same home that the Windows GUI uses.
 3. If the user explicitly wants the WSL-local CLI database, use `--wsl`.
 4. If the target is an isolated bot/worker, resolve its `HOME` from the project config or environment and use `--home <path>`.
-5. If the target is unclear, use `--auto`; it prefers the home with the larger provider count.
+5. If the target is unclear, use `--auto`; it prefers the Windows GUI home when available.
 6. After modifications, rerun `config validate` and `provider current` against the same target home.
 
 ## Windows GUI Database Locked
@@ -97,7 +98,7 @@ Success criteria:
 - Windows log reaches `正常启动模式：主窗口已显示`.
 - No new `Failed to init database` entry appears after restart.
 
-If Windows and WSL provider counts differ after this fix, explain that the GUI now reads the Windows database while WSL CLI reads the WSL database. Sync or import providers only after backing up both sides.
+If Windows and WSL provider counts differ after this fix, treat the Windows GUI database as the normal shared object. Use the WSL database only for explicit WSL-local work, or sync/import providers only after backing up both sides.
 
 ## Fixed Intent: "切换到百度 CC"
 
@@ -140,23 +141,26 @@ If the user is testing through Telegram, remind them that existing Claude Code s
 ## Quick Start
 
 ```bash
-# Compare WSL and Windows cc-switch databases and print the recommended target
+# Compare WSL and Windows cc-switch databases and print the shared target
 bash scripts/cc-switch-run.sh doctor
 
-# List providers from the Windows-backed cc-switch database while running in WSL
-bash scripts/cc-switch-run.sh --windows provider list
+# List providers from the shared GUI-backed cc-switch database while running in WSL
+bash scripts/cc-switch-run.sh provider list
 
-# Validate provider counts for the Windows-backed database
-bash scripts/cc-switch-run.sh --windows config validate
+# Validate provider counts for the shared GUI-backed database
+bash scripts/cc-switch-run.sh config validate
 
-# List only Codex providers from the Windows-backed database
-bash scripts/cc-switch-run.sh --windows --app codex provider list
+# List only Codex providers from the shared GUI-backed database
+bash scripts/cc-switch-run.sh --app codex provider list
 
-# Show the current Claude provider from the Windows-backed database
-bash scripts/cc-switch-run.sh --windows --app claude provider current
+# Show the current Claude provider from the shared GUI-backed database
+bash scripts/cc-switch-run.sh --app claude provider current
 
-# Switch a Windows-backed provider
-bash scripts/cc-switch-run.sh --windows --app codex provider switch <provider-id>
+# Switch a shared GUI-backed provider
+bash scripts/cc-switch-run.sh --app codex provider switch <provider-id>
+
+# Print the HOME used by default/--gui, useful for long-running proxy commands
+bash scripts/cc-switch-run.sh --gui print-home
 
 # Add a provider to the WSL-local database explicitly
 bash scripts/cc-switch-run.sh --wsl --app codex provider add
@@ -169,10 +173,11 @@ HOME=/home/zhanxp/.agents/bdcc1 cc-switch provider switch -a claude baidu-qianfa
 HOME=/home/zhanxp/.agents/bdcc1 cc-switch provider list -a claude
 
 # Start the local cc-switch proxy in tmux; proxy serve is foreground by design
-cc-switch proxy show
+GUI_HOME="$(bash scripts/cc-switch-run.sh --gui print-home)"
+HOME="$GUI_HOME" cc-switch proxy show
 tmux new-session -d -s cc-switch-proxy \
-  'cc-switch proxy serve --listen-address 127.0.0.1 --listen-port 15721 2>&1 | tee -a logs/runtime/cc-switch-proxy.log'
-cc-switch proxy show
+  "HOME='$GUI_HOME' cc-switch proxy serve --listen-address 127.0.0.1 --listen-port 15721 2>&1 | tee -a logs/runtime/cc-switch-proxy.log"
+HOME="$GUI_HOME" cc-switch proxy show
 
 # Non-interactively upsert an Anthropic-compatible Claude provider for worker homes.
 # Keep the secret outside the command line when possible.
@@ -249,11 +254,12 @@ If the worker runner sets `HOME` and clears `CLAUDE_CONFIG_DIR`, Claude Code wil
 `cc-switch proxy serve` runs in the foreground. For long-running local use, start it under tmux and verify both `cc-switch proxy show` and the listening port:
 
 ```bash
-cc-switch proxy show
+GUI_HOME="$(bash scripts/cc-switch-run.sh --gui print-home)"
+HOME="$GUI_HOME" cc-switch proxy show
 tmux has-session -t cc-switch-proxy || \
   tmux new-session -d -s cc-switch-proxy \
-    'cc-switch proxy serve --listen-address 127.0.0.1 --listen-port 15721 2>&1 | tee -a logs/runtime/cc-switch-proxy.log'
-cc-switch proxy show
+    "HOME='$GUI_HOME' cc-switch proxy serve --listen-address 127.0.0.1 --listen-port 15721 2>&1 | tee -a logs/runtime/cc-switch-proxy.log"
+HOME="$GUI_HOME" cc-switch proxy show
 ss -ltnp | rg ':15721'
 tail -n 60 logs/runtime/cc-switch-proxy.log
 ```
@@ -303,26 +309,29 @@ PY
 For future hot-switchable Claude sessions, configure Claude to use the proxy URL, keep real upstream credentials only in cc-switch providers, start the proxy, then switch providers:
 
 ```bash
-cc-switch proxy show
+GUI_HOME="$(bash scripts/cc-switch-run.sh --gui print-home)"
+HOME="$GUI_HOME" cc-switch proxy show
 tmux has-session -t cc-switch-proxy || \
   tmux new-session -d -s cc-switch-proxy \
-    'cc-switch proxy serve --listen-address 127.0.0.1 --listen-port 15721 2>&1 | tee -a logs/runtime/cc-switch-proxy.log'
+    "HOME='$GUI_HOME' cc-switch proxy serve --listen-address 127.0.0.1 --listen-port 15721 2>&1 | tee -a logs/runtime/cc-switch-proxy.log"
 
 # Once Claude is using http://127.0.0.1:15721, this changes the next proxied request.
-cc-switch provider switch -a claude baidu-qianfan
-cc-switch proxy show
+bash scripts/cc-switch-run.sh --app claude provider switch baidu-qianfan
+HOME="$GUI_HOME" cc-switch proxy show
 ```
 
 If an existing terminal was opened before proxy routing was configured, explain that one restart is required to enter proxy mode; after that, future provider switches can be hot.
 
 ## Mismatch Handling
 
-When CLI and GUI disagree, the common cause is that they are reading different homes:
+When CLI and GUI disagree, first assume the skill or raw CLI was pointed at a different home than the GUI. The skill wrapper is designed to prevent this by default:
 
-- `cc-switch` in WSL defaults to `/home/<user>/.cc-switch`
-- the Windows app often uses `C:\Users\<user>\.cc-switch`
+- `bash scripts/cc-switch-run.sh ...` defaults to the Windows GUI home when it exists.
+- `cc-switch ...` run raw in WSL still defaults to `/home/<user>/.cc-switch`; avoid raw `cc-switch` for normal user-facing actions.
+- Use `bash scripts/cc-switch-run.sh --gui print-home` to see the exact shared operation object.
+- Use `--wsl` only when the user explicitly asks for WSL-local state.
 
-If raw `cc-switch provider list` says `No providers found` but the Windows app clearly shows providers, rerun the same command through this skill with `--windows` or `doctor`.
+If raw `cc-switch provider list` says `No providers found` but the Windows app clearly shows providers, rerun the same command through this skill wrapper or `doctor`.
 
 ## Claude Live Config Notes
 

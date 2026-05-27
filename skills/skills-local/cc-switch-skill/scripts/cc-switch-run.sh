@@ -5,25 +5,28 @@ usage() {
   cat <<'EOF'
 Usage:
   bash scripts/cc-switch-run.sh doctor
-  bash scripts/cc-switch-run.sh [--auto|--windows|--wsl|--home <path>] <cc-switch args...>
+  bash scripts/cc-switch-run.sh [--auto|--gui|--windows|--wsl|--home <path>] <cc-switch args...>
 
 Modes:
-  --auto     Prefer the home with the larger provider count
-  --windows  Force /mnt/c/Users/<user> as HOME when available
+  --auto     Prefer the Windows GUI cc-switch home when available
+  --gui      Force the Windows GUI cc-switch home when available
+  --windows  Compatibility alias for --gui
   --wsl      Force the current WSL HOME
   --home     Force an explicit HOME, useful for isolated worker homes
 
 Examples:
   bash scripts/cc-switch-run.sh doctor
-  bash scripts/cc-switch-run.sh --windows provider list
-  bash scripts/cc-switch-run.sh --windows --app codex provider current
+  bash scripts/cc-switch-run.sh provider list
+  bash scripts/cc-switch-run.sh --gui --app codex provider current
+  bash scripts/cc-switch-run.sh --gui print-home
   bash scripts/cc-switch-run.sh --home /home/zhanxp/.agents/bdcc1 --app claude provider current
 EOF
 }
 
 linux_home="${HOME}"
 windows_user="${CC_SWITCH_WINDOWS_USER:-${USER}}"
-windows_home="/mnt/c/Users/${windows_user}"
+windows_profile="/mnt/c/Users/${windows_user}"
+windows_store_path="${windows_profile}/AppData/Roaming/com.ccswitch.desktop/app_paths.json"
 
 is_wsl() {
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
@@ -32,6 +35,80 @@ is_wsl() {
 
   grep -qiE 'microsoft|wsl' /proc/sys/kernel/osrelease 2>/dev/null
 }
+
+windows_path_to_wsl_home() {
+  local raw_path="$1"
+
+  python3 - "$raw_path" <<'PY'
+import os
+import re
+import sys
+
+path = sys.argv[1].strip().strip('"')
+path = path.rstrip("\\/")
+
+def config_dir_to_home(candidate: str) -> str:
+    candidate = candidate.rstrip("/")
+    if os.path.basename(candidate) == ".cc-switch":
+        return os.path.dirname(candidate)
+    return candidate
+
+if not path:
+    raise SystemExit(1)
+
+drive_match = re.match(r"^([A-Za-z]):[\\/](.*)$", path)
+if drive_match:
+    drive = drive_match.group(1).lower()
+    rest = drive_match.group(2).replace("\\", "/")
+    print(config_dir_to_home(f"/mnt/{drive}/{rest}"))
+    raise SystemExit(0)
+
+unc_match = re.match(r"^\\\\(?:wsl\.localhost|wsl\$)\\[^\\]+\\(.+)$", path, flags=re.I)
+if unc_match:
+    print(config_dir_to_home("/" + unc_match.group(1).replace("\\", "/")))
+    raise SystemExit(0)
+
+if path.startswith("/"):
+    print(config_dir_to_home(path))
+    raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+detect_windows_gui_home() {
+  local fallback="${windows_profile}"
+  local override=""
+
+  if [[ -f "$windows_store_path" ]]; then
+    override="$(
+      python3 - "$windows_store_path" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    raise SystemExit(0)
+
+value = data.get("app_config_dir_override")
+if value:
+    print(value)
+PY
+    )"
+  fi
+
+  if [[ -n "$override" ]]; then
+    if windows_path_to_wsl_home "$override"; then
+      return
+    fi
+  fi
+
+  printf '%s\n' "$fallback"
+}
+
+windows_home="$(detect_windows_gui_home)"
 
 db_path() {
   local target_home="$1"
@@ -61,21 +138,12 @@ count_providers() {
 }
 
 recommended_home() {
-  local linux_count windows_count
-
   if ! is_wsl || [[ ! -d "$windows_home/.cc-switch" ]]; then
     echo "$linux_home"
     return
   fi
 
-  linux_count="$(count_providers "$linux_home")"
-  windows_count="$(count_providers "$windows_home")"
-
-  if (( windows_count > linux_count )); then
-    echo "$windows_home"
-  else
-    echo "$linux_home"
-  fi
+  echo "$windows_home"
 }
 
 doctor() {
@@ -90,7 +158,7 @@ doctor() {
 
   recommended="$(recommended_home)"
   if [[ "$recommended" == "$windows_home" ]]; then
-    target_label="windows"
+    target_label="gui"
   else
     target_label="wsl"
   fi
@@ -101,14 +169,16 @@ WSL DB:             $(db_path "$linux_home")
 WSL DB exists:      $(db_exists "$linux_home" && echo yes || echo no)
 WSL provider total: $linux_count
 Windows HOME:       $windows_home
+Windows Store:      $windows_store_path
 Windows DB:         $(db_path "$windows_home")
 Windows DB exists:  $(db_exists "$windows_home" && echo yes || echo no)
 Windows providers:  $windows_count
 Recommended mode:   $target_label
 
 Hint:
-  - Use --windows when the Windows cc-switch app is the source of truth.
-  - Use --wsl when you intentionally manage the WSL-local cc-switch database.
+  - Default/--auto uses the Windows GUI cc-switch home when it exists.
+  - Use --wsl only when you intentionally manage the WSL-local cc-switch database.
+  - Use --home for isolated worker homes such as bdcc1/bdcc2.
 EOF
 }
 
@@ -117,6 +187,10 @@ if [[ $# -gt 0 ]]; then
   case "$1" in
     --auto)
       mode="auto"
+      shift
+      ;;
+    --gui)
+      mode="windows"
       shift
       ;;
     --windows)
@@ -160,11 +234,11 @@ case "$mode" in
     ;;
   windows)
     if ! is_wsl; then
-      echo "error: --windows is intended for WSL sessions." >&2
+      echo "error: --gui/--windows is intended for WSL sessions." >&2
       exit 1
     fi
     if [[ ! -d "$windows_home/.cc-switch" ]]; then
-      echo "error: Windows cc-switch home not found at $windows_home/.cc-switch" >&2
+      echo "error: Windows GUI cc-switch home not found at $windows_home/.cc-switch" >&2
       exit 1
     fi
     target_home="$windows_home"
@@ -184,6 +258,11 @@ case "$mode" in
     exit 1
     ;;
 esac
+
+if [[ "$1" == "print-home" ]]; then
+  printf '%s\n' "$target_home"
+  exit 0
+fi
 
 echo "info: using HOME=$target_home" >&2
 HOME="$target_home" cc-switch "$@"
