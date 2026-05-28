@@ -1,7 +1,7 @@
 interface:
   display_name: "Codex Plan Claude Exec Review"
-  short_description: "Hand Codex plans to Claude Code and review the result."
-  default_prompt: "Use $codex-plan-claude-exec-review when Codex should produce a plan, hand it to a Claude Code worker in an isolated worktree, and then review Claude's completed diff before accepting it."
+  short_description: "Select a clean idle cc worker, launch visibly, review, verify, then refresh runtime."
+  default_prompt: "Use $codex-plan-claude-exec-review when Codex should plan a task, select the first clean idle tg-agent-gateway cc2-cc8 worker or use an available requested cc worker, launch Claude Code in that worker worktree through Windows Terminal/tmux, review Claude's diff before accepting or merging it, and after integration run final verification plus tg-agent-gateway build/restart when the change affects phone acceptance. Treat any existing claude-<ccN>-* tmux session as making that cc worker busy: generic cc dispatch skips to the next worker, while fixed ccN requests report waiting and do not attach, resend prompts, or start a duplicate task. Keep completed Claude worker tmux sessions open until the worker branch/diff is merged into master or explicitly discarded and the worktree is clean; do not close them merely because Claude finished or the patch was copied into cx1/cx2. If an accepted worker patch is applied to the main checkout but not committed yet, report the source worker, changed files, and tmux session so the next merge can use the worktree-merge Accepted Patch Lane. Include Token Usage in final reports, with exact codex/cc counts only when exposed by the runtime or CLI, otherwise mark unavailable. Post-task /compact is disabled by default and should only be enabled with --compact when explicitly requested."
 
 policy:
   allow_implicit_invocation: true

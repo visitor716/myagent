@@ -1,0 +1,4 @@
+interface:
+  display_name: "Worktree Merge"
+  short_description: "Merge, sync, push, and clean worker Git worktrees."
+  default_prompt: "Use this skill when merging ready tg-agent-gateway worker worktrees, finishing an accepted cc worker patch that Codex already applied into the main checkout, synchronizing cc/cx worker branches to master, pushing worker refs, deleting obsolete historical remote refs, closing completed worker tmux sessions, or diagnosing whether active worker branches are dirty, active, behind, diverged, or fully current. If the main checkout is dirty only because it holds the reviewed worker patch, commit only those accepted files on master first, back up and stash the duplicate worker diff, fast-forward the worker to master, then continue verification, push/sync, runtime restart, and completed-worker tmux cleanup."
