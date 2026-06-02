@@ -1,6 +1,6 @@
 ---
 name: tg-app-release-command
-description: Implement, verify, or operate tg-agent-gateway `/app`, `/webapp`, and `/latest_app` commands so they send the latest WebApp entry to the Telegram bot with release version, branch-specific version fingerprint, branch name, deployment time, latest update notes, and fresh WebApp buttons. Use when the user asks to make `/app` send the latest app, include version/branch/deploy time/update content, make version change across branches, or diagnose stale WebApp release information.
+description: Implement, verify, or operate tg-agent-gateway `/app`, `/webapp`, and `/latest_app` commands so they send the latest WebApp entry to the Telegram bot with release version, branch name, commit, deployment time, latest update notes, and fresh WebApp buttons. Use when the user asks to make `/app` send the latest app, include version/branch/deploy time/update content, make version change across branches, or diagnose stale WebApp release information.
 ---
 
 # TG App Release Command
@@ -12,8 +12,9 @@ Use this skill in `/home/zhanxp/projects/tg-agent-gateway` when `/app` should be
 `/app`, `/webapp`, and `/latest_app` must use the same handler and return:
 
 - App title: `TG Agent Gateway WebApp`.
-- Version: include package version plus a branch-specific fingerprint, so the visible version changes when the branch changes even if `package.json` is unchanged.
+- Version: show only the release version, for example `v1.0.20`. Do not append `+<branch>.<shortCommit>` to the visible version.
 - Branch: the actual current git branch, normally `master`.
+- Commit: show the short commit on its own line when available.
 - Deployment time: Asia/Shanghai time for the current deployed build/restart.
 - Latest update content: concise release notes for the currently deployed app.
 - Latest link: current `TG_WEBAPP_URL`.
@@ -25,20 +26,20 @@ Do not use a hardcoded `master` constant unless the runtime truly cannot read gi
 
 ## Version Rule
 
-Use a deterministic display version:
+Use a deterministic display version without branch or commit suffix:
 
 ```text
-v<package.version>+<safe-branch>.<shortCommit>
+v<package.version>
 ```
 
 Examples:
 
 ```text
-v1.0.1+master.756faca
-v1.0.1+wt-cc5.83e4571
+v1.0.1
+v1.0.20
 ```
 
-Normalize branch names for version text with lowercase and non-alphanumeric runs replaced by `-`. This satisfies the invariant that a different branch produces a different version string.
+Keep branch and commit visible as separate message lines instead of embedding them into the version. This avoids noisy test release labels such as `+master.bbbfa59` while preserving traceability.
 
 ## Deployment Time
 
@@ -119,8 +120,9 @@ curl -sS http://127.0.0.1:3000/health
 
 For live bot verification, prove:
 
-- `/app` message contains `版本：v...+<branch>.<shortCommit>`.
+- `/app` message contains `版本：v...` without a `+<branch>.<shortCommit>` suffix.
 - It contains `分支：master` when running on master.
+- It contains `提交：<shortCommit>` when commit info is available.
 - It contains `部署时间：`.
 - It contains `更新内容：`.
 - It includes both WebApp and browser fallback buttons.

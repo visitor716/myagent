@@ -60,7 +60,7 @@ cdeep() {
 }
 
 cheartbeat() {
-  python3 /home/zhanxp/projects/myagent/scripts/codex_heartbeat.py "$@"
+  python3 /home/zhanxp/projects/myagent/scripts/apps/codex/codex_heartbeat.py "$@"
 }
 
 cchrome_status() {

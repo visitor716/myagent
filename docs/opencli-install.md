@@ -8,10 +8,10 @@ Source: `jackwener/OpenCLI`
 
 - Global CLI: `opencli` from npm
 - Repo-managed skills:
-  - `skills/skills-local/opencli-usage`
-  - `skills/skills-local/opencli-browser`
-  - `skills/skills-local/opencli-adapter-author`
-  - `skills/skills-local/opencli-autofix`
+  - `skills/skills-download/opencli-usage`
+  - `skills/skills-download/opencli-browser`
+  - `skills/skills-download/opencli-adapter-author`
+  - `skills/skills-download/opencli-autofix`
 - Runtime skill symlinks:
   - `~/.codex/skills/opencli-*`
   - `~/.claude/skills/opencli-*`

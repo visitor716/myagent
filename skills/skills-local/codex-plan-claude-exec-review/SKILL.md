@@ -104,8 +104,8 @@ tmux list-sessions -F '#{session_name}' 2>/dev/null |
 Stale completed-session cleanup:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3"
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3" --apply
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3"
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3" --apply
 ```
 
 Only run the `--apply` cleanup after proving each target worker branch has been
@@ -290,6 +290,8 @@ When Claude finishes, review before accepting:
 - Independently rerun the most relevant verification when it is cheap. Treat Claude's claimed verification as evidence to check, not as final proof.
 - Flag unrelated rewrites, deleted safeguards, broad refactors, untracked generated files, or hidden config/secret changes.
 - Watch for module-load side effects introduced by the patch. In TypeScript repos, helpers that import global env/config modules can make unit tests fail before they execute; prefer side-effect-light helpers or explicit env setup in tests.
+- For WebApp task/message/detail changes in `tg-agent-gateway`, trace the actual click path end to end: card state update, API call, detail-sheet open, task-detail fetch, and event-stream fetch. Every dynamic `taskId` URL should use the shared encoding helper; do not accept raw `/tasks/${id}` interpolation when sibling endpoints already encode IDs.
+- For file-persisted task state such as `data/task-messages.json`, verify tests route writes to a temporary path before importing code that writes messages. Do not let unit tests write fixture task IDs into the real local data file, because that creates phone-visible messages whose task detail cannot resolve.
 - For package scripts that already include a test path, do not assume `npm run <script> -- <file>` narrows the run. Use the underlying test binary directly when you need a single focused test, for example `./node_modules/.bin/vitest run tests/unit/foo.test.ts`.
 - Use code-review style output: findings ordered by severity, with file and line references when available.
 - If no issues are found, proceed to integration when appropriate rather than asking Claude for another report.
@@ -304,7 +306,7 @@ changes and rerun the relevant verification in the main checkout.
 If you apply an accepted worker patch into the main checkout but do not commit
 it in the same turn, record the source worker, changed main files, backup patch
 path if any, and tmux session name in the final report. The next `merge` should
-use the `worktree-merge` Accepted Patch Lane so the main patch is committed,
+use the `merge-worktree-master` Accepted Patch Lane so the main patch is committed,
 the duplicate worker diff is backed up/cleaned, and the worker tmux session is
 closed only after final disposition.
 

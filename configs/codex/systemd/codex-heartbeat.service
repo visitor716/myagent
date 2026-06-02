@@ -6,4 +6,4 @@ Type=oneshot
 WorkingDirectory=/home/zhanxp/projects/myagent
 Environment=PATH=/home/zhanxp/.nvm/versions/node/v20.20.2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 /home/zhanxp/projects/myagent/scripts/codex_heartbeat.py --quiet
+ExecStart=/usr/bin/python3 /home/zhanxp/projects/myagent/scripts/apps/codex/codex_heartbeat.py --quiet
