@@ -4,6 +4,9 @@ param(
         "get-brightness",
         "set-brightness",
         "adjust-brightness",
+        "get-display-state",
+        "set-internal-display",
+        "refresh-brightness-ui",
         "get-volume",
         "set-volume",
         "adjust-volume",
@@ -74,6 +77,82 @@ function Get-Brightness {
     foreach ($monitor in (Get-BrightnessMonitors)) {
         "$($monitor.InstanceName): $($monitor.CurrentBrightness)"
     }
+}
+
+function Write-Section {
+    param([string]$Name)
+    ""
+    "== $Name =="
+}
+
+function Get-DisplayState {
+    Write-Section "brightness monitors"
+    try {
+        Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness |
+            Select-Object InstanceName, CurrentBrightness |
+            Format-Table -AutoSize |
+            Out-String |
+            Write-Output
+    } catch {
+        "brightness monitors: unavailable ($($_.Exception.Message))"
+    }
+
+    Write-Section "monitor devices"
+    Get-PnpDevice -Class Monitor |
+        Select-Object Status, FriendlyName, InstanceId |
+        Format-Table -AutoSize |
+        Out-String |
+        Write-Output
+
+    Write-Section "display adapters"
+    Get-PnpDevice -Class Display |
+        Select-Object Status, FriendlyName, InstanceId |
+        Format-Table -AutoSize |
+        Out-String |
+        Write-Output
+
+    Write-Section "session"
+    try {
+        (& query.exe session) -join [Environment]::NewLine
+    } catch {
+        "query.exe session: unavailable ($($_.Exception.Message))"
+    }
+
+    Write-Section "remote or virtual display processes"
+    $processes = Get-Process -Name SunloginClient,SunloginClient*,Oray*,GameViewer*,ToDesk*,AnyDesk*,RustDesk*,mstsc -ErrorAction SilentlyContinue
+    if ($processes) {
+        $processes |
+            Select-Object Id, ProcessName, SessionId, Path |
+            Format-Table -AutoSize |
+            Out-String |
+            Write-Output
+    } else {
+        "none detected"
+    }
+}
+
+function Set-InternalDisplay {
+    $displaySwitch = Join-Path $env:SystemRoot "System32\DisplaySwitch.exe"
+    if (-not (Test-Path $displaySwitch)) {
+        throw "DisplaySwitch.exe not found: $displaySwitch"
+    }
+    & $displaySwitch /internal
+    Start-Sleep -Seconds 3
+    "display topology: internal"
+}
+
+function Refresh-BrightnessUi {
+    $stopped = @()
+    foreach ($name in @("ShellExperienceHost", "StartMenuExperienceHost", "explorer")) {
+        $processes = Get-Process -Name $name -ErrorAction SilentlyContinue
+        if ($processes) {
+            $stopped += "${name}:$($processes.Count)"
+            $processes | Stop-Process -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Start-Sleep -Seconds 2
+    Start-Process explorer.exe
+    "brightness UI refreshed: $($stopped -join ', ')"
 }
 
 function Add-CoreAudioType {
@@ -237,6 +316,15 @@ switch ($Action) {
                 "$($monitor.InstanceName): $current -> $target"
             }
         }
+    }
+    "get-display-state" {
+        Get-DisplayState
+    }
+    "set-internal-display" {
+        Set-InternalDisplay
+    }
+    "refresh-brightness-ui" {
+        Refresh-BrightnessUi
     }
     "get-volume" {
         Get-Volume

@@ -1,4 +1,4 @@
 interface:
   display_name: "Windows System Settings"
-  short_description: "Adjust Windows display, power, and safe system settings from WSL"
-  default_prompt: "Use $windows-system-settings to safely adjust Windows brightness, display, power, or other reversible system settings from WSL."
+  short_description: "Adjust Windows brightness, display UI, power, and safe settings from WSL"
+  default_prompt: "Use $windows-system-settings to safely adjust Windows brightness, diagnose a grey brightness slider, inspect display state, tune power, or change other reversible system settings from WSL."
