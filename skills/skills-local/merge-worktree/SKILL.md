@@ -1,6 +1,6 @@
 ---
-name: worktree-merge
-description: Safely merge, audit, synchronize, push, and clean up tg-agent-gateway worker worktrees, worker branches, dirty worker diffs, stale remote refs, and completed worker tmux sessions. Use when the user asks to merge ready worktrees, batch merge worker branches, sync cc/cx workers to master, push worker refs, inspect or classify dirty cc/cx worktrees as accepted/keep/discard, delete obsolete historical remote branches, close completed worker tmux windows, or answer whether active worker branches are current.
+name: merge-worktree
+description: Safely merge, audit, synchronize, push, and clean up tg-agent-gateway worker worktrees, worker branches, dirty worker diffs, stale remote refs, and completed worker tmux sessions. Use when the user asks to merge ready worktrees, batch merge worker branches, sync cc/cx workers to master, push worker refs, inspect or classify dirty cc/cx worktrees as accepted/keep/discard, delete obsolete historical remote branches, close completed worker tmux sessions, or answer whether active worker branches are current.
 ---
 
 # Worktree Merge
@@ -42,25 +42,25 @@ the already-completed steps.
 Always preview first:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/merge_ready_worktrees.sh --dry-run
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/merge_ready_worktrees.sh --dry-run
 ```
 
 For a read-only branch/worktree audit:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_worker_refs.sh
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/audit_worker_refs.sh
 ```
 
 Before syncing dirty worker refs, classify the dirty contents and export evidence:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_dirty_worktrees.sh
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/audit_dirty_worktrees.sh
 ```
 
 Apply only after reading the dry-run report:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/merge_ready_worktrees.sh --apply
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/merge_ready_worktrees.sh --apply
 ```
 
 The default target repo is:
@@ -161,7 +161,7 @@ worker worktrees are dirty. The goal is to prove the disposition before syncing:
 Run the classifier first:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_dirty_worktrees.sh
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/audit_dirty_worktrees.sh
 ```
 
 The script writes evidence under `.git/codex-backups/dirty-worktree-audit-*`,
@@ -171,14 +171,14 @@ path-by-path comparison against `master`.
 Automatic handling is intentionally narrow:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_dirty_worktrees.sh --apply-accepted
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/audit_dirty_worktrees.sh --apply-accepted
 ```
 
 This only stashes and fast-forwards `accepted-exact` workers. For work reviewed
 as obsolete or superseded, pass the exact worker list:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_dirty_worktrees.sh --stash-discarded "cc2 cc3"
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/audit_dirty_worktrees.sh --stash-discarded "cc2 cc3"
 ```
 
 `--stash-discarded` is still reversible: it exports evidence, runs
@@ -294,15 +294,15 @@ Use this lane when the user asks to close completed windows, tmux panes, or work
 1. Confirm active refs are synced and worker worktrees are clean:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_worker_refs.sh
+bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/audit_worker_refs.sh
 git worktree list --porcelain
 ```
 
 2. Prefer the guarded cleanup script. It is dry-run by default and only closes sessions with `--apply`:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3"
-bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3" --apply
+   bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3"
+   bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3" --apply
 ```
 
 The script only considers `claude-*` sessions whose pane cwd is inside the worker worktree, skips dirty worktrees, skips workers whose branch is not contained in `master`, skips workers with active/planned DB rows, and skips panes that do not look like a completed Claude final report.

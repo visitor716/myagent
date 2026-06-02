@@ -1,0 +1,14 @@
+{
+  "name": "merge-worktree",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/merge-worktree",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/merge-worktree",
+    "/home/zhanxp/.agents/skills/merge-worktree",
+    "/home/zhanxp/.claude/skills/merge-worktree",
+    "/home/zhanxp/.hermes/skills/myagent/merge-worktree"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local workflow skill for safely merging, syncing, pushing, auditing, and cleaning tg-agent-gateway worker worktrees."
+}
