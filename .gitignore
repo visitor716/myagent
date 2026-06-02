@@ -9,3 +9,42 @@ graphify-out/
 **/.playwright/
 **/.playwright*/
 **/*:Zone.Identifier
+
+# Windows/WSL garbage paths (accidentally created)
+*wsl.localhost*/
+\\wsl.localhost*/
+
+# Symlink skills to ~/.claude/skills/ (runtime only, don't commit)
+skills/skills-local/agent-usage-monitor
+skills/skills-local/ai-slop-cleaner
+skills/skills-local/analyze
+skills/skills-local/audio
+skills/skills-local/code-review
+skills/skills-local/coding-standards
+skills/skills-local/commit
+skills/skills-local/deploy
+skills/skills-local/deploy-to-vercel
+skills/skills-local/find-docs
+skills/skills-local/find-skills
+skills/skills-local/lint
+skills/skills-local/personal-balance-sheet
+skills/skills-local/pr
+skills/skills-local/review
+skills/skills-local/security-review
+skills/skills-local/sqlite-admin
+skills/skills-local/test
+skills/skills-local/tg-agent-gateway-worktree-acceptance
+skills/skills-local/tg-gateway-menu-recovery
+skills/skills-local/typecheck
+skills/skills-local/ultraqa
+skills/skills-local/vercel
+skills/skills-local/vercel-composition-patterns
+skills/skills-local/vercel-react-best-practices
+skills/skills-local/vercel-react-native-skills
+skills/skills-local/vitest
+skills/skills-local/web-design-guidelines
+skills/skills-local/wx-cli
+
+# Runtime directories
+logs/
+configs/claude code/

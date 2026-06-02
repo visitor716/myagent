@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Task Queue"
+  short_description: "Queue Codex tasks and compact between runs."
+  default_prompt: "Use $codex-task-queue to add follow-up requirements to a Codex tmux task queue, watch for completion markers, run /compact, and continue with the next queued task."

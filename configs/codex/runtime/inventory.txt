@@ -109,7 +109,7 @@ lrwxrwxrwx 68 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/sync-sh
 lrwxrwxrwx 68 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/wsl-windows-chrome -> /home/zhanxp/projects/myagent/skills/skills-local/wsl-windows-chrome
 lrwxrwxrwx 69 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/coding-standards -> /home/zhanxp/projects/myagent/skills/skills-download/coding-standards
 lrwxrwxrwx 69 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/deploy-to-vercel -> /home/zhanxp/projects/myagent/skills/skills-download/deploy-to-vercel
-lrwxrwxrwx 69 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/oa-timesheet-filler -> /home/zhanxp/projects/myagent/skills/skills-local/oa-timesheet-filler
+lrwxrwxrwx 76 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/oa-exception-record-filler -> /home/zhanxp/projects/myagent/skills/skills-local/oa-exception-record-filler
 lrwxrwxrwx 69 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/telegram-input-flow -> /home/zhanxp/projects/myagent/skills/skills-local/telegram-input-flow
 lrwxrwxrwx 70 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/cc-connect-bot-setup -> /home/zhanxp/projects/myagent/skills/skills-local/cc-connect-bot-setup
 lrwxrwxrwx 70 /home/zhanxp/projects/myagent/configs/codex/runtime/skills/personal-bookkeeping -> /home/zhanxp/projects/myagent/skills/skills-local/personal-bookkeeping

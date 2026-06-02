@@ -1,0 +1,4 @@
+openai:
+  display_name: "TG App Release Command"
+  short_description: "Make /app send latest WebApp version, branch, deploy time, and notes."
+  default_prompt: "Use $tg-app-release-command to implement or verify tg-agent-gateway /app, /webapp, and /latest_app release messages with branch-specific version fingerprints, deployment time, latest update notes, and fresh WebApp buttons."

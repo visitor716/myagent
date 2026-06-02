@@ -18,7 +18,7 @@ SKILLS_DOWNLOAD_ROOT="/home/zhanxp/projects/myagent/skills/skills-download"
 
 MYAGENT_ROOT="/home/zhanxp/projects/myagent"
 CLAUDE_SETTINGS_RUNTIME="$HOME/.claude/settings.json"
-CLAUDE_SETTINGS_SOURCE="$MYAGENT_ROOT/configs/claude-code/settings.json"
+CLAUDE_SETTINGS_SOURCE="$MYAGENT_ROOT/configs/claude code/settings.json"
 CODEX_CONFIG_RUNTIME="$HOME/.codex/config.toml"
 CODEX_CONFIG_SOURCE="$MYAGENT_ROOT/configs/codex/config.toml"
 MYAGENT_CONFIG_SYNC="$MYAGENT_ROOT/configs/sync.sh"

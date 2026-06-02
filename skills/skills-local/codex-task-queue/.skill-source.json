@@ -1,0 +1,7 @@
+{
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/codex-task-queue",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/codex-task-queue"
+  ],
+  "sync_policy": "symlink-preferred"
+}

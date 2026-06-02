@@ -1,106 +1,47 @@
-# Repository Guidelines
+# 仓库指南
 
-## Project Structure & Module Organization
+## 项目结构
 
-This repository preserves everything worth keeping from learning AI and using AI, then synchronizes reusable pieces into other projects or runtime tool directories. It is the source of truth for user-managed agent skills, workflow notes, helper scripts, local agent configuration, operating memory, and repeated AI-use procedures. Keep custom skills under `skills/`: downloaded skills live in `skills/skills-download/`, local/private workflow skills live in `skills/skills-local/`, and each skill should include `SKILL.md` plus `.skill-source.json`. Configuration templates live in `configs/`, split between `configs/claude code/` and `configs/codex/`. Operational helper scripts live in `scripts/`; samples and ad hoc tests are under `scripts/Test/`. Longer design and migration notes belong in `docs/`.
+这是我在学习和使用 AI 过程中沉淀的宝贵资产仓库，保存所有值得保留的内容：
+- `skills/skills-local/` - 本地自定义技能（主要工作区）
+- `skills/skills-download/` - 下载/管理的技能
+- `configs/` - Claude Code + Codex 配置模板
+- `scripts/` - Windows/WSL 工具脚本
+- `docs/` - 迁移计划和状态文档
 
-## Build, Test, and Development Commands
-
-There is no single app build step. Use targeted validation:
-
-```bash
-bash configs/sync.sh validate
-```
-
-Validates tracked Claude Code and Codex config templates.
+## 验证命令
 
 ```bash
-bash -n configs/sync.sh
-find scripts -name '*.py' -print0 | xargs -0 python -m py_compile
+bash configs/sync.sh validate    # 验证配置格式
+bash configs/sync.sh restore     # 模板 → 运行时
+bash configs/sync.sh backup      # 运行时 → 模板（备份后需脱敏）
 ```
 
-Checks shell syntax and Python syntax for helper scripts.
+## 执行原则
 
-```bash
-bash configs/sync.sh backup
-bash configs/sync.sh restore
-```
+1. 先将需求转化为具体的成功标准和验证证据
+2. 做最小且足够的改动，避免不必要的抽象和依赖
+3. 保持修改的精准性，只触摸与需求相关的文件
+4. 用实际执行结果验证，而非凭信心
+5. 优先可逆的改动
 
-Backs up runtime configs into this repo or restores repo templates to runtime locations. Review and redact secrets before committing backups.
+## 编码规范
 
-## AI Coding Charter
+- 文档用 Markdown，指令简洁直接
+- Shell 脚本使用 `set -euo pipefail`，变量加引号，保持幂等
+- Python 优先使用标准库，函数清晰，路径显式
+- 技能目录名用小写连字符格式，如 `daily-report-table`
 
-Before changing files, convert the request into success criteria and the
-evidence that will prove them. State assumptions only when they affect the path;
-ask only for truly blocking, high-risk ambiguity.
+## 安全规则
 
-Prefer the smallest sufficient change. Do not add abstractions, dependencies,
-broad rewrites, or cleanup outside the stated goal unless they are required for
-correctness and verification.
+- 永远不要提交真实的 API Key、Token 或本地密钥
+- 使用 `${VAR_NAME}` 占位符
+- `~/.codex/skills/` 和 `~/.claude/skills/` 是运行时挂载点，不是主存储
 
-Keep edits surgical: touch only files whose change can be traced to the
-request, preserve unrelated dirty work, and make reversible changes by default.
+## Codex 运行偏好
 
-Verify with execution, not confidence. For this repo that usually means
-`bash configs/sync.sh validate`, `python -m py_compile` for changed Python,
-`bash -n` for changed shell, skill `quick_validate.py`, or targeted tests under
-the changed skill. Final reports should name changed files, checks run, and
-residual risk.
+本机使用高自治模式：`approval_policy = "never"` 和 `sandbox_mode = "danger-full-access"`，除非用户明确要求降低权限。
 
-## Coding Style & Naming Conventions
+浏览器自动化使用 `wsl-windows-chrome` 技能的专用 Windows Chrome/Edge 配置文件。
 
-Use Markdown for documentation and keep instructions direct. Shell scripts should use `set -euo pipefail`, quote variables, and keep idempotent operations safe to re-run. Python scripts should prefer clear functions, explicit paths, and standard-library dependencies unless a skill documents otherwise. Skill directories use lowercase, hyphenated names such as `daily-report-table` or `cc-switch-skill`.
-
-## Testing Guidelines
-
-Add focused tests or sample inputs near the script or skill they cover. For Python helpers, use `scripts/Test/` or a nearby `*Test.py` file when matching existing patterns. Always run `configs/sync.sh validate` after config changes and `python -m py_compile` on changed Python files. For skill changes, verify the changed `SKILL.md` is usable from a clean checkout and `.skill-source.json` remains present.
-
-## Commit & Pull Request Guidelines
-
-Recent history follows Conventional Commits, for example `feat(skills): ...`, `fix(daily-report): ...`, `docs(skills): ...`, and `chore(deps): ...`. Keep subjects imperative and scoped. Pull requests should explain the intent, list touched directories, include validation commands run, and call out any runtime config or secret-handling impact. Include screenshots only for UI/browser automation changes.
-
-## Security & Configuration Tips
-
-Never commit real API keys, tokens, or machine-local secrets. Use `.env.example`, `${VAR_NAME}` placeholders, and ignored local files such as `configs/claude code/.env` or `configs/codex/config.local.toml`. Treat `~/.codex/skills/` and `~/.claude/skills/` as runtime mount points, not primary storage.
-
-## Codex Runtime Preferences
-
-The user's preferred Codex posture on this trusted machine is high-autonomy:
-keep `approval_policy = "never"` and `sandbox_mode = "danger-full-access"`
-unless the user explicitly asks to reduce privileges. Within higher-priority
-safety rules, proceed with reversible local configuration and verification work
-without asking for confirmation.
-
-For browser automation from WSL, use the `wsl-windows-chrome` skill and its
-dedicated Windows Chrome/Edge automation profile. Do not add or use
-Chrome/Browser MCP for normal browser tasks unless the user explicitly asks for
-MCP. If the dedicated Windows CDP endpoint is unavailable, report diagnostics
-instead of falling back to a fresh WSL/Linux browser.
-
-Long-term Codex memory lives under `docs/agent-memory/`. Update
-`open-loops.md` for paused follow-ups, `decisions.md` for durable choices, and
-`codex-operating-memory.md` for stable preferences. Keep these files free of
-secrets.
-
-## AI Work Archive Workflow
-
-Treat this repository as the durable archive for the user's AI learning and AI
-usage, not just a scripts folder or a Codex workspace. Important workflow
-context should become plain text under `docs/`, durable agent operating memory
-belongs under `docs/agent-memory/`, reusable procedures should become skills
-under `skills/skills-local/`, and runtime configuration should flow through
-`configs/sync.sh` so future threads do not rediscover the same setup.
-
-For long-running or ambitious work, define the verifier before declaring a goal
-complete. Prefer concrete checks such as `bash configs/sync.sh validate`,
-targeted tests, syntax checks, reproducible bug cases, or a written validation
-matrix. If the work produces an artifact, keep it reviewable in the repo.
-
-Use steering and queueing naturally: if the user redirects an active task, apply
-the newest instruction locally and continue; if they add follow-up work, finish
-the current verified step and then handle the queued item. Package recurring
-workflows as skills once the useful pattern is clear.
-
-Do not enable startup MCP servers just for convenience. Browser work uses the
-`wsl-windows-chrome` skill, and unsupported WSL `cmd /c npx` MCP startup blocks
-should be removed from Codex runtime config.
+长期记忆保存在 `docs/agent-memory/` 下。

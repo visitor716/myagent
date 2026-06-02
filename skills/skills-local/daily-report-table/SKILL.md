@@ -44,10 +44,11 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 - `区域`: `F3`
 - `记录人员`: `詹香平`
 - `输出目录`: `D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化`
-- `日报笔记`: `每天日报.md`（追加模式，Obsidian 中直接查看）
-- `光斑调试笔记`: `光斑调试记录.md`（追加模式，Obsidian 中直接查看）
+- `月度目录`: 按日报日期自动写入输出目录下的 `YYYY-MM` 子目录，例如 `2026-05`
+- `日报笔记`: `YYYY-MM\每天日报.md`（新记录插入表头后第一批数据行，Obsidian 中直接查看）
+- `光斑调试笔记`: `YYYY-MM\光斑调试记录.md`（新记录插入表头后第一批数据行，Obsidian 中直接查看）
 - `Excel 表格文件`: `日报表格-{date}.xlsx`
-- `光斑调试记录 Excel`: `光斑调试记录.xlsx`（累计追加，不按日期分文件）
+- `光斑调试记录 Excel`: `YYYY-MM\光斑调试记录.xlsx`（当月累计追加，不按日期分文件）
 - `企业微信文件`: `企业微信日报-{date}.html`
 - `图表列文件`: `光斑异常图表列-{date}.tsv`
 - `图表复制页`: `光斑异常图表复制-{date}.html`
@@ -190,6 +191,7 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 - 主表 `异常现象` 只写异常/现象本身，不写处理动作或处理结果（例如不要包含"重启后恢复正常""更换后恢复生产""光斑OK"等）。
 - 主表 `问题复盘` 保持简短，只简要复述异常现象，默认与精简后的 `异常现象` 一致；当异常现象描述为能量向某方向偏（如 `能量偏左下`、`能量往右偏`）时，统一写 `能量偏移`；当异常现象包含 `破洞` 时，统一写 `光斑破洞`；当异常现象包含 `内缩` 时，统一写 `光斑内缩`。
 - 光斑调试表 is generated when an entry contains `光斑` or `能量偏`.
+- 光斑调试表 `异常类型`: when the abnormal/process text contains `功率衰减` (or typo `功率摔减`), write `光斑破洞`.
 - `机台编号` uses the full machine token, such as `9B2` or `4A1`.
 - Machine ranges like `1-14同步检查所有机台...` may be parsed as `待确认`; after running the script, verify the preview. If a range was misparsed, manually correct `机台编号` to the range (for example `1-14`) and use clearer `异常现象`/`问题复盘` text such as `CT稳定性同步检查`.
 - 光斑调试表的 `机台` uses the base machine, such as `9B2 -> 9B`.
@@ -199,23 +201,24 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
   - explicit `BD`
   - machine suffix `1 -> AC`
   - machine suffix `2 -> BD`
-  - fallback `AC和BD`
+  - fallback blank when the original text only identifies the base machine, such as `12A`
 
 ## Output
 
 - Recommended defaults:
-  - Normal日报: default XLSX-only write path
+  - Normal日报: default monthly Obsidian notes + XLSX write path
   - 企业微信样式调整: `--format wecom-html --write-mode html --preview summary`
   - 企业微信图表列复制: `--chart-copy --write-mode none --preview summary`
 - Default format is Markdown (terminal preview).
 - Default writes should stay in `D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化`; use `--output-dir` only when the user explicitly asks for a different storage location.
 - The saved output directory in `~/.tcp-daily-report-table.json` overrides the built-in default for later runs; explicit `--output-dir` overrides both for the current run.
+- The saved output directory is the root folder. Each run writes under its date-derived `YYYY-MM` child folder, such as `D:\...\扬州晶澳F3日报表格自动化\2026-05`.
 - Path handling is platform-aware: Windows keeps `D:\...` paths native, WSL/Linux maps Windows drive paths to `/mnt/d/...`, and Windows maps `/mnt/d/...` back to `D:\...`.
 - Default save mode generates:
-  - `每天日报.md` — appends main table rows, viewable directly in Obsidian
-  - `光斑调试记录.md` — appends spot rows (when spot content exists), viewable in Obsidian
-  - `日报表格-{date}.xlsx` — date-stamped workbook (two sheets: 每天日报 + 光斑调试记录)
-  - `光斑调试记录.xlsx` — cumulative spot records, new rows appended each run
+  - `YYYY-MM\每天日报.md` — inserts new main table rows immediately below the header, viewable directly in Obsidian
+  - `YYYY-MM\光斑调试记录.md` — inserts new spot rows immediately below the header when spot content exists, viewable in Obsidian
+  - `YYYY-MM\日报表格-{date}.xlsx` — date-stamped workbook (two sheets: 每天日报 + 光斑调试记录)
+  - `YYYY-MM\光斑调试记录.xlsx` — monthly cumulative spot records, new rows appended each run
 - No `.tsv` files are generated.
 - XLSX cells are centered horizontally/vertically, use thin borders, enable automatic text wrapping, and set wider process columns for long Chinese descriptions.
 - When modifying or debugging XLSX output, verify the workbook internals instead of only checking that the file exists:
@@ -224,7 +227,7 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
   - `xl/styles.xml` contains thin borders for left/right/top/bottom
   - worksheet cells include `s="1"` style references
   - long text columns such as `调试过程` and `处理说明` have wider `<col ... width="48" .../>` settings
-- Use `--format wecom-html` when the user wants enterprise WeChat-friendly table layout. This saves a styled HTML file named like `企业微信日报-2026-04-18.html`, with `F3` rendered as a blue selected tag.
+- Use `--format wecom-html` when the user wants enterprise WeChat-friendly table layout. This saves a styled HTML file named like `企业微信日报-2026-04-18.html`, with copy-safe inline borders, centered table cells, and `F3` rendered as a blue selected tag.
 - `--output-dir` supports both Windows paths like `D:\...` and WSL paths like `/mnt/d/...` on both Windows and WSL.
 - `--write-mode html` generates only the HTML file. Use this for style tweaks or enterprise WeChat delivery.
 - `--write-mode none` skips all XLSX/HTML writes. Pair it with `--chart-copy` when you only need the图表粘贴列.

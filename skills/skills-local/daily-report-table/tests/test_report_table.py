@@ -35,6 +35,21 @@ class ReportTableTests(unittest.TestCase):
             ],
         )
 
+    def test_split_entries_preserves_decimal_power_values(self) -> None:
+        text = (
+            '1、12A1光斑内缩，调整倍率及发散角，调整DOE后光斑形貌OK\n'
+            '2、10A2激光器满功率摔减只有64.5w，联系供应商远程优化后满功率85.5w，'
+            '调整扩束镜及DOE后光斑形貌OK交付工艺\n'
+            '3、8A反馈相机离边距波动，标定相机测试重复性及精度正常'
+        )
+
+        entries = report_table.split_entries(text)
+
+        self.assertEqual(len(entries), 3)
+        self.assertIn('64.5w', entries[1])
+        self.assertIn('85.5w', entries[1])
+        self.assertTrue(entries[1].startswith('10A2激光器满功率'))
+
     def test_build_tables_from_mixed_entries(self) -> None:
         text = (
             '1、9A出料一驱动器报警EE，重新断电插拔编码器接头后复位正常。\n'
@@ -204,6 +219,46 @@ class ReportTableTests(unittest.TestCase):
         self.assertEqual([row[7] for row in main_rows], ['光斑中间破洞', '下边破洞', '光斑内缩'])
         self.assertEqual([row[9] for row in main_rows], ['光斑破洞', '光斑破洞', '光斑内缩'])
 
+    def test_base_machine_without_explicit_channel_leaves_spot_channel_blank(self) -> None:
+        metadata = {
+            'date': '2026/5/24',
+            'name': '詹香平',
+            'group': report_table.DEFAULTS['group'],
+            'base': report_table.DEFAULTS['base'],
+            'device': report_table.DEFAULTS['device'],
+            'business': report_table.DEFAULTS['business'],
+            'category': report_table.DEFAULTS['category'],
+            'area': 'F3',
+        }
+        parsed_entry = report_table.parse_entry('12A光斑内缩，调整倍率及发散角，调整DOE后光斑形貌OK')
+
+        spot_rows = report_table.build_spot_rows([parsed_entry], metadata)
+
+        self.assertEqual(parsed_entry.machine_full, '12A')
+        self.assertEqual(parsed_entry.machine_base, '12A')
+        self.assertEqual(parsed_entry.channel, '')
+        self.assertEqual(spot_rows[0][2:5], ['12A', '', '光斑内缩'])
+
+    def test_power_decay_spot_issue_normalizes_to_hole(self) -> None:
+        metadata = {
+            'date': '2026/5/25',
+            'name': '詹香平',
+            'group': report_table.DEFAULTS['group'],
+            'base': report_table.DEFAULTS['base'],
+            'device': report_table.DEFAULTS['device'],
+            'business': report_table.DEFAULTS['business'],
+            'category': report_table.DEFAULTS['category'],
+            'area': 'F3',
+        }
+        parsed_entries = [
+            report_table.parse_entry('10A2激光器满功率衰减只有64.5w，联系供应商远程优化后满功率85.5w，调整扩束镜及DOE后光斑形貌OK交付工艺'),
+            report_table.parse_entry('10A2激光器满功率摔减只有64.5w，联系供应商远程优化后满功率85.5w，调整扩束镜及DOE后光斑形貌OK交付工艺'),
+        ]
+
+        spot_rows = report_table.build_spot_rows(parsed_entries, metadata)
+
+        self.assertEqual([row[2:5] for row in spot_rows], [['10A', 'BD', '光斑破洞'], ['10A', 'BD', '光斑破洞']])
+
     def test_resolve_path_converts_windows_path_for_wsl(self) -> None:
         default_output_dir = r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化'
 
@@ -235,6 +290,28 @@ class ReportTableTests(unittest.TestCase):
             report_table.resolve_filename_template('企业微信日报-{date}.html', '2026/4/18'),
             '企业微信日报-2026-04-18.html',
         )
+
+    def test_report_output_dir_adds_month_folder(self) -> None:
+        with patch.object(report_table, 'running_on_windows', return_value=False):
+            output_dir = report_table.report_output_dir(
+                r'D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化',
+                '2026/5/26',
+            )
+
+        self.assertEqual(
+            str(output_dir),
+            '/mnt/d/Obsidian/MyNote/03.工作/扬州晶澳F3日报表格自动化/2026-05',
+        )
+
+    def test_report_output_dir_handles_existing_month_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            same_month = report_table.report_output_dir(str(root / '2026-05'), '2026/5/26')
+            next_month = report_table.report_output_dir(str(root / '2026-05'), '2026/6/1')
+
+        self.assertEqual(same_month, root / '2026-05')
+        self.assertEqual(next_month, root / '2026-06')
 
     def test_format_chart_date_uses_month_day_chinese_label(self) -> None:
         self.assertEqual(report_table.format_chart_date('2026/4/18'), '4月18日')
@@ -297,6 +374,24 @@ class ReportTableTests(unittest.TestCase):
         self.assertIn('\n光斑调试表\n', output)
         self.assertIn('区域\t日期\t机台\t通道\t异常类型\t处理说明\t记录人员\t备注', output)
 
+    def test_wecom_html_inlines_copy_safe_table_styles(self) -> None:
+        main_rows = [
+            ['2026/5/26', '罗威组', '扬州晶澳F3', 'TCP', '13B1', '运维', '工艺调试', '光斑破洞', '处理过程1', '光斑破洞', '詹香平'],
+        ]
+        spot_rows = [
+            ['F3', '5月26号', '13B', 'AC', '光斑破洞', '处理过程1', '詹香平', ''],
+        ]
+
+        html = report_table.render_wecom_html(main_rows, spot_rows)
+
+        self.assertIn('border="1" cellspacing="0" cellpadding="0"', html)
+        self.assertIn('style="width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #1f2329;"', html)
+        self.assertIn('align="center" valign="middle"', html)
+        self.assertIn('border:1px solid #1f2329;', html)
+        self.assertIn('text-align:center;', html)
+        self.assertIn('vertical-align:middle;', html)
+        self.assertIn('background:#f5f7fa;font-weight:700;', html)
+
     def test_build_chart_export_maps_machine_and_channel_to_fixed_rows(self) -> None:
         parsed_entries = [
             report_table.parse_entry('4B2光斑缺失，调整后恢复'),
@@ -314,7 +409,19 @@ class ReportTableTests(unittest.TestCase):
         self.assertEqual(chart_map['3A-AC'], '光斑破洞')
         self.assertEqual(chart_map['3A-BD'], '光斑破洞')
 
-    def test_persist_outputs_appends_spot_xlsx(self) -> None:
+    def test_build_chart_export_reports_unspecified_channel_without_guessing(self) -> None:
+        parsed_entries = [
+            report_table.parse_entry('12A光斑内缩，调整倍率及发散角，调整DOE后光斑形貌OK'),
+        ]
+
+        chart_export = report_table.build_chart_export(parsed_entries, 12)
+        chart_map = dict(zip(chart_export.rows, chart_export.values))
+
+        self.assertEqual(chart_map['12A-AC'], '')
+        self.assertEqual(chart_map['12A-BD'], '')
+        self.assertEqual(chart_export.unmapped_rows, ['12A'])
+
+    def test_persist_outputs_uses_month_folder_and_prepends_markdown_rows(self) -> None:
         metadata = {
             'date': '2026/4/16',
             'name': '詹香平',
@@ -333,8 +440,11 @@ class ReportTableTests(unittest.TestCase):
             'chart_target_sheet': '',
             'chart_start_cell': '',
         }
-        main_rows = [
+        main_rows_batch1 = [
             ['', '', '', '', '9A', '', '工艺调试', '驱动器报警EE', '处理过程1', '驱动器报警EE', '詹香平'],
+        ]
+        main_rows_batch2 = [
+            ['', '', '', '', '10A', '', '工艺调试', '光斑破洞', '处理过程3', '光斑破洞', '詹香平'],
         ]
         spot_rows_batch1 = [
             ['F3', '4月16号', '9B', 'AC', '光斑破洞', '处理过程2', '詹香平', ''],
@@ -346,11 +456,12 @@ class ReportTableTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             metadata['output_dir'] = temp_dir
             # First write
-            report_table.persist_outputs(main_rows, spot_rows_batch1, metadata, 'markdown', 'xlsx', None, False)
-            # Second write: should append
-            report_table.persist_outputs(main_rows, spot_rows_batch2, metadata, 'markdown', 'xlsx', None, False)
+            report_table.persist_outputs(main_rows_batch1, spot_rows_batch1, metadata, 'markdown', 'xlsx', None, False)
+            # Second write: Markdown notes should put the newest rows directly below the header.
+            report_table.persist_outputs(main_rows_batch2, spot_rows_batch2, metadata, 'markdown', 'xlsx', None, False)
 
-            spot_xlsx = Path(temp_dir) / '光斑调试记录.xlsx'
+            month_dir = Path(temp_dir) / '2026-04'
+            spot_xlsx = month_dir / '光斑调试记录.xlsx'
             existing_rows = report_table.read_xlsx_data_rows(spot_xlsx)
             self.assertEqual(len(existing_rows), 2)
             self.assertEqual(existing_rows[0][1], '4月16号')
@@ -358,11 +469,34 @@ class ReportTableTests(unittest.TestCase):
             self.assertEqual(existing_rows[1][1], '4月17号')
             self.assertEqual(existing_rows[1][2], '10A')
 
-            main_note = Path(temp_dir) / '每天日报.md'
+            main_note = month_dir / '每天日报.md'
             self.assertTrue(main_note.exists())
-            main_content = main_note.read_text(encoding='utf-8')
-            self.assertIn('# 每天日报', main_content)
-            self.assertEqual(main_content.count('|  |  |  |  | 9A |  | 工艺调试 | 驱动器报警EE | 处理过程1 | 驱动器报警EE | 詹香平 |'), 2)
+            main_lines = main_note.read_text(encoding='utf-8').splitlines()
+            self.assertEqual(main_lines[0], '# 每天日报')
+            self.assertEqual(main_lines[4], '|  |  |  |  | 10A |  | 工艺调试 | 光斑破洞 | 处理过程3 | 光斑破洞 | 詹香平 |')
+            self.assertEqual(main_lines[5], '|  |  |  |  | 9A |  | 工艺调试 | 驱动器报警EE | 处理过程1 | 驱动器报警EE | 詹香平 |')
+
+    def test_prepend_rows_handles_markdown_header_spacing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            note_path = Path(temp_dir) / '光斑调试记录.md'
+            note_path.write_text(
+                '# 光斑调试记录\n\n'
+                '| 区域  |  日期   | 机台  |  通道   | 异常类型 | 处理说明 | 记录人员 | 备注  |\n'
+                '| :-: | :---: | :-: | :---: | :--: | :------------------------: | :--: | :-: |\n'
+                '| F3  | 5月24号 | 12A |  | 光斑内缩 | 处理过程1 | 詹香平  |     |\n',
+                encoding='utf-8',
+            )
+
+            report_table.prepend_rows_to_markdown_note(
+                note_path,
+                report_table.SPOT_HEADERS,
+                '光斑调试记录',
+                [['F3', '5月25号', '12A', 'AC', '光斑内缩', '处理过程2', '詹香平', '']],
+            )
+
+            lines = note_path.read_text(encoding='utf-8').splitlines()
+            self.assertEqual(lines[4], '| F3 | 5月25号 | 12A | AC | 光斑内缩 | 处理过程2 | 詹香平 |  |')
+            self.assertEqual(lines[5], '| F3  | 5月24号 | 12A |  | 光斑内缩 | 处理过程1 | 詹香平  |     |')
 
     def test_xlsx_write_mode_only_writes_excel_workbook(self) -> None:
         metadata = {
@@ -390,7 +524,7 @@ class ReportTableTests(unittest.TestCase):
             metadata['output_dir'] = temp_dir
             messages = report_table.persist_outputs(main_rows, [], metadata, 'markdown', 'xlsx', None, False)
 
-            xlsx_file = Path(temp_dir) / '日报表格-2026-04-16.xlsx'
+            xlsx_file = Path(temp_dir) / '2026-04' / '日报表格-2026-04-16.xlsx'
             self.assertTrue(xlsx_file.exists())
             with zipfile.ZipFile(xlsx_file) as workbook:
                 workbook_names = workbook.namelist()
@@ -430,8 +564,9 @@ class ReportTableTests(unittest.TestCase):
             chart_export = report_table.build_chart_export(parsed_entries, 7)
             report_table.persist_outputs([], [], metadata, 'markdown', 'none', chart_export, True)
 
-            chart_file = Path(temp_dir) / '光斑异常图表列-2026-04-18.tsv'
-            html_file = Path(temp_dir) / '光斑异常图表复制-2026-04-18.html'
+            month_dir = Path(temp_dir) / '2026-04'
+            chart_file = month_dir / '光斑异常图表列-2026-04-18.tsv'
+            html_file = month_dir / '光斑异常图表复制-2026-04-18.html'
             self.assertTrue(chart_file.exists())
             self.assertTrue(html_file.exists())
             self.assertTrue(chart_file.read_bytes().startswith(report_table.UTF8_BOM))

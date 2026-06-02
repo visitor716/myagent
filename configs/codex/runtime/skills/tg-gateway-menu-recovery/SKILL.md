@@ -1,6 +1,6 @@
 ---
 name: tg-gateway-menu-recovery
-description: Diagnose and fix tg-agent-gateway Telegram menu, command-bar, or mobile WebApp no-response incidents, including /menu not returning, Telegram bottom menu clicks doing nothing, phone WebApp blank/no UI, stale Telegram WebApp popups pointing at old Cloudflare quick tunnels, WebApp URL or tunnel target drift, Gateway restart but bot inactive, Telegraf launch/polling hangs, tmux restart scripts losing proxy environment, setMyCommands/setChatMenuButton failures, callback_data drift such as back_to_main vs back_to_menu, and launchAsBot worker token polling conflicts. Use when working in /home/zhanxp/projects/tg-agent-gateway on Telegram Bot UI, WebApp entry, manager bot startup, restart scripts, or mobile menu recovery.
+description: Diagnose and fix tg-agent-gateway Telegram menu, command-bar, or mobile WebApp no-response incidents, including /menu not returning, Telegram bottom menu clicks doing nothing, phone WebApp blank/no UI, stale Telegram WebApp popups pointing at old Cloudflare quick tunnels, WebApp URL or tunnel target drift, Gateway restart but bot inactive, phone WebApp loading loops fixed by rebuild/restart plus cache-busted fresh buttons, Telegraf launch/polling hangs, tmux restart scripts losing proxy environment, setMyCommands/setChatMenuButton failures, callback_data drift such as back_to_main vs back_to_menu, and launchAsBot worker token polling conflicts. Use when working in /home/zhanxp/projects/tg-agent-gateway on Telegram Bot UI, WebApp entry, manager bot startup, restart scripts, or mobile menu recovery.
 ---
 
 # TG Gateway Menu Recovery
@@ -69,6 +69,9 @@ rg -n "@vite/client|/src/main|/assets/" /tmp/tg-webapp.html
 ```
 
    - Healthy production HTML references `/assets/index-*.js` and does not reference `@vite/client` or `/src/main`.
+   - If local `3000/health`, public HTML, and asset downloads are healthy but the phone still shows an endless loading state, suspect a stale Telegram WebApp popup/WebView or stale runtime asset state before assuming Cloudflare is down.
+   - Prove the static path by comparing the current public asset hash after `npm run webapp:build`; Express serves `webapp/dist` from disk, but an already-open phone WebView can keep the old document until the popup is closed or the URL is cache-busted.
+   - If a rebuild/restart makes the phone recover, record the root as stale WebApp runtime/cache or masked frontend loading state unless logs show a backend outage. Send a fresh button with a timestamp query parameter to bypass WebView cache.
    - If using Telegram Web for proof, use the `wsl-windows-chrome` skill first, select the logged-in Telegram Web tab, close any old WebApp popup, click the newest fresh button, then inspect iframe URLs:
 
 ```bash
@@ -135,13 +138,14 @@ Prefer this sequence for code changes:
 
 1. Fix the runtime environment first: tmux/restart script proxy forwarding.
 2. For phone WebApp blank/no UI, fix the tunnel target and WebApp URL before changing frontend code.
-3. Before changing React for a mobile blank screen, close stale Telegram WebApp popups, click a timestamped fresh button, and prove the iframe URL plus rendered app content.
-4. Add a Telegraf launch wrapper that retries startup and returns after the launch callback, not after polling stops.
-5. Move `setupManagerBotCommands` to run after manager launch success.
-6. Add per-chat menu repair in the admin middleware.
-7. Fix callback compatibility (`back_to_main` -> `back_to_menu`).
-8. Add a bounded timeout around main-menu Telegram sends if the menu in-flight lock can stick.
-9. Fix worker bot token selection if workers are launched as bots.
+3. If the tunnel and production assets are healthy but the phone is still loading, build the WebApp, restart Gateway, send a cache-busted timestamped button, then re-test before editing React.
+4. Before changing React for a mobile blank screen, close stale Telegram WebApp popups, click a timestamped fresh button, and prove the iframe URL plus rendered app content.
+5. Add a Telegraf launch wrapper that retries startup and returns after the launch callback, not after polling stops.
+6. Move `setupManagerBotCommands` to run after manager launch success.
+7. Add per-chat menu repair in the admin middleware.
+8. Fix callback compatibility (`back_to_main` -> `back_to_menu`).
+9. Add a bounded timeout around main-menu Telegram sends if the menu in-flight lock can stick.
+10. Fix worker bot token selection if workers are launched as bots.
 
 Keep changes small and testable. Avoid changing Telegram command semantics, callback formats beyond compatibility aliases, task status semantics, or workspace paths.
 
@@ -172,6 +176,7 @@ Required evidence:
 - `Telegram default menu button configured`
 - If recovering mobile WebApp, `TG_WEBAPP_URL` points to the current tunnel and the tunnel settings show `url:http://localhost:3000`.
 - Current WebApp HTML references production `/assets/index-*.js`, not Vite `@vite/client` or `/src/main`.
+- After a WebApp rebuild/restart, the public HTML references the new asset hash and a timestamped fresh Telegram button has been sent.
 - Telegram WebApp iframe, when checked through Telegram Web, points at the current `TG_WEBAPP_URL`, not an old `*.trycloudflare.com` URL, and the snapshot shows app UI such as `当前项目`.
 - WebApp API calls such as `/api/webapp/projects` and `/api/webapp/dashboard` return `200` when opened with valid Telegram WebApp `initData`.
 - `/menu` attempts either log `Main menu sent` / `Main menu message edited`, or a bounded timeout error followed by a released in-flight lock.
@@ -210,6 +215,8 @@ const chatId = process.env.ADMIN_USER_ID;
 const webappUrl = process.env.TG_WEBAPP_URL;
 const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
 if (!token || !chatId || !webappUrl) throw new Error('missing env');
+const freshUrl = new URL(webappUrl);
+freshUrl.searchParams.set('v', Date.now().toString());
 const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
   method: 'POST',
   agent: proxy ? new HttpsProxyAgent(proxy) : undefined,
@@ -217,7 +224,7 @@ const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
   body: JSON.stringify({
     chat_id: chatId,
     text: `最新 WebApp 入口（${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}）：请先关闭旧弹窗，再点下面按钮。`,
-    reply_markup: { inline_keyboard: [[{ text: '打开最新控制台', web_app: { url: webappUrl } }]] },
+    reply_markup: { inline_keyboard: [[{ text: '打开最新控制台', web_app: { url: freshUrl.toString() } }]] },
   }),
 });
 const data = await res.json();

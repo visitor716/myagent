@@ -1,6 +1,6 @@
 ---
 name: worktree-merge
-description: Safely merge, audit, synchronize, push, and clean up tg-agent-gateway worker worktrees, worker branches, stale remote refs, and completed worker tmux sessions. Use when the user asks to merge ready worktrees, batch merge worker branches, sync cc/cx workers to master, push worker refs, inspect which cc2-cc8 worktrees are dirty/active/behind/diverged, delete obsolete historical remote branches, close completed worker tmux windows, or answer whether active worker branches are current.
+description: Safely merge, audit, synchronize, push, and clean up tg-agent-gateway worker worktrees, worker branches, dirty worker diffs, stale remote refs, and completed worker tmux sessions. Use when the user asks to merge ready worktrees, batch merge worker branches, sync cc/cx workers to master, push worker refs, inspect or classify dirty cc/cx worktrees as accepted/keep/discard, delete obsolete historical remote branches, close completed worker tmux windows, or answer whether active worker branches are current.
 ---
 
 # Worktree Merge
@@ -9,6 +9,7 @@ Use this skill for `tg-agent-gateway` multi-worktree integration and worker-bran
 
 - **Merge lane**: merge ready worker commits into `master`.
 - **Accepted patch lane**: finish a reviewed worker diff that Codex already applied into the main checkout, but that has not yet been committed or used to dispose of the worker branch.
+- **Dirty audit lane**: classify dirty worker worktrees as accepted-exact, keep-review, or reviewed discard before syncing worker refs.
 - **Sync lane**: after `master` is accepted, align active worker/planner/reviewer branches to the latest `master` and push safe refs.
 - **Cleanup lane**: after accepted work is synced, remove obsolete historical remote refs and close completed worker tmux sessions.
 
@@ -50,6 +51,12 @@ For a read-only branch/worktree audit:
 bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_worker_refs.sh
 ```
 
+Before syncing dirty worker refs, classify the dirty contents and export evidence:
+
+```bash
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_dirty_worktrees.sh
+```
+
 Apply only after reading the dry-run report:
 
 ```bash
@@ -85,6 +92,11 @@ The script only marks a worker ready when:
 - the worker branch is not behind `master`
 
 It skips dirty, active, unchanged, behind, diverged, missing, or invalid worktrees and reports why.
+
+Dirty worktrees must be classified before any sync step stashes or disposes of
+their contents. Do not run a broad dirty-worktree sync just because branches have
+no unique commits. First use the Dirty Audit Lane below and record which workers
+are accepted, which should be preserved, and which are reviewed discard.
 
 ## Accepted Patch Lane
 
@@ -133,12 +145,57 @@ separated from the accepted worker patch, stop and report the blocker. If the
 worker diff is not represented by the new `master` commit, keep the tmux session
 open and do not clean or reuse that worker.
 
+## Dirty Audit Lane
+
+Use this lane whenever active worker refs are behind `master` but the checked-out
+worker worktrees are dirty. The goal is to prove the disposition before syncing:
+
+- `accepted-exact`: dirty working tree content exactly matches `master` and the
+  branch has no unique commits. It is safe to back up, stash, and fast-forward.
+- `keep-review`: dirty content differs from `master`, has unique commits, or has
+  an active process. Preserve it until the work is reviewed or the worker is
+  stopped.
+- `discard-candidate`: dirty mismatches are only patch/reject artifacts. Back up
+  and stash only after confirming they are not needed.
+
+Run the classifier first:
+
+```bash
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_dirty_worktrees.sh
+```
+
+The script writes evidence under `.git/codex-backups/dirty-worktree-audit-*`,
+including each worker's status, diff stat, patches, untracked files, and
+path-by-path comparison against `master`.
+
+Automatic handling is intentionally narrow:
+
+```bash
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_dirty_worktrees.sh --apply-accepted
+```
+
+This only stashes and fast-forwards `accepted-exact` workers. For work reviewed
+as obsolete or superseded, pass the exact worker list:
+
+```bash
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge/scripts/audit_dirty_worktrees.sh --stash-discarded "cc2 cc3"
+```
+
+`--stash-discarded` is still reversible: it exports evidence, runs
+`git stash push -u`, and then `git merge --ff-only master`. It refuses active
+worktrees unless `--include-active` is explicitly provided and refuses branches
+with unique worker commits. It never resets, cleans, force-pushes, or deletes a
+branch.
+
+After dirty disposition, re-run `audit_worker_refs.sh`, push only the refs that
+were safely fast-forwarded, and leave `keep-review` workers unpushed.
+
 ## Sync Lane
 
 Use this lane when `master` already contains the accepted work and the user asks to "同步所有分支", "处理所有分支", "push worker branches", or "现在所有分支是不是统一".
 
 1. Run the audit script.
-2. For dirty checked-out worker worktrees, inspect whether the diff is already represented in `master`.
+2. For dirty checked-out worker worktrees, run the Dirty Audit Lane before any stash or fast-forward.
 3. If the dirty work is duplicate/accepted, preserve it first:
 
 ```bash
@@ -346,6 +403,7 @@ For sync/audit tasks, also include:
 
 - active branch set checked
 - local/remote ahead-behind counts
+- dirty worktree classification: accepted-exact, keep-review, or reviewed discard
 - backup patch/stash/branch paths created
 - remote refs pushed or intentionally skipped
 - whether historical branches were excluded from "all current" claims

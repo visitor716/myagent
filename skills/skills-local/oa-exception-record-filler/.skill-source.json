@@ -1,0 +1,13 @@
+{
+  "name": "oa-exception-record-filler",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/oa-exception-record-filler",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/oa-exception-record-filler",
+    "/home/zhanxp/.claude/skills/oa-exception-record-filler",
+    "/home/zhanxp/.hermes/skills/myagent/oa-exception-record-filler"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for safely filling DR Laser OA exception-record forms from TCP daily reports and saving without submitting."
+}

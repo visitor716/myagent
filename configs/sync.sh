@@ -297,6 +297,7 @@ install_codex_full_auto_config() {
 
     upsert_toml_root_key_in_place "$tmp_file" "approval_policy" '"never"'
     upsert_toml_root_key_in_place "$tmp_file" "sandbox_mode" '"danger-full-access"'
+    upsert_toml_root_key_in_place "$tmp_file" "suppress_unstable_features_warning" "true"
     upsert_toml_table_key_in_place "$tmp_file" "[notice]" "hide_full_access_warning" "true"
     remove_codex_unsupported_startup_mcp_in_place "$tmp_file"
     write_if_changed "$tmp_file" "$target" "$label" "$mode"

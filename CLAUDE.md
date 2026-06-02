@@ -1,87 +1,59 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为 Claude Code 提供本仓库的工作指南。
 
-## What this repo is
+## 仓库定位
 
-Source-of-truth repository for everything worth preserving from learning AI and
-using AI: custom agent skills, configuration templates, utility scripts,
-workflow notes, browser/proxy routines, and durable operating memory. This is
-not a traditional software project — there is no top-level build, lint, or test
-suite.
+这是我在学习和使用 AI 过程中沉淀的宝贵资产仓库，保存所有值得保留的内容：自定义 Agent 技能、配置模板、工具脚本、工作流笔记、浏览器/代理流程、持久化运行记忆。这不是传统软件项目——没有顶层构建、lint 或测试套件。
 
-## Execution charter
+## 执行原则
 
-Start by turning the request into concrete success criteria and the evidence
-that will prove completion. State assumptions when they materially affect the
-path; ask only for ambiguity that is both blocking and high risk.
+1. 先将需求转化为具体的成功标准和验证证据
+2. 做最小且足够的改动，避免新抽象、依赖、大范围重写或机会主义清理
+3. 保持修改的精准性，只触摸与需求相关的文件，保留不相关的脏工作，优先可逆改动
+4. 用实际执行结果验证：`bash configs/sync.sh validate`、Python 编译检查、Shell 语法检查、技能测试
 
-Use the smallest sufficient change. Avoid new abstractions, dependencies, broad
-rewrites, and opportunistic cleanup unless they are required to make the
-requested outcome correct and verifiable.
-
-Keep edits surgical. Touch only files whose change can be traced to the user
-request, preserve unrelated dirty work, and favor reversible changes.
-
-Treat execution as ground truth. For this repository, run the narrow verifier
-that matches the change: `bash configs/sync.sh validate`, Python compile checks,
-shell syntax checks, skill `quick_validate.py`, or targeted skill tests. When
-reporting, distinguish executed facts from inspected or assumed facts when risk
-matters.
-
-## Repo structure
+## 仓库结构
 
 ```
-skills/skills-local/     # User-created custom skills (the primary working area)
-skills/skills-download/  # Downloaded/managed skills (OMX-managed, less frequently edited)
-configs/                 # Claude Code + Codex config templates, plus sync.sh
-scripts/                 # Miscellaneous Windows/WSL utility scripts
-docs/                    # Migration plans and status docs
+skills/skills-local/     # 本地自定义技能（主要工作区）
+skills/skills-download/  # 下载/管理的技能（OMX 管理，较少编辑）
+configs/                 # Claude Code + Codex 配置模板 + sync.sh
+scripts/                 # Windows/WSL 工具脚本
+docs/                    # 迁移计划和状态文档
 ```
 
-## Skill anatomy
+## 技能结构
 
-Each skill in `skills-local/` follows this layout:
+每个技能在 `skills-local/` 下的布局：
 
 ```
 <skill-name>/
-├── SKILL.md              # Skill definition — main file to edit for behavior changes
-├── .skill-source.json    # Metadata (source owner, runtime targets, sync policy)
-├── agents/openai.yaml    # Optional: OpenAI-compatible agent configuration
-├── scripts/              # Implementation scripts the skill invokes
-├── references/           # Optional reference docs loaded by the skill
-└── tests/                # Optional test files (only daily-report-table currently)
+├── SKILL.md              # 技能定义 —— 主要编辑文件
+├── .skill-source.json    # 元数据（来源所有者、运行时目标、同步策略）
+├── agents/openai.yaml    # 可选：OpenAI 兼容代理配置
+├── scripts/              # 技能调用的实现脚本
+├── references/           # 可选：技能加载的参考文档
+└── tests/                # 可选：测试文件（目前只有 daily-report-table）
 ```
 
-When editing a skill, `SKILL.md` is the entry point. Scripts are in `scripts/`.
+编辑技能时，`SKILL.md` 是入口点，脚本在 `scripts/` 中。
 
-## Config management
+## 配置管理
 
 ```bash
-bash configs/sync.sh validate          # Validate config formats
-bash configs/sync.sh restore           # Copy templates → runtime (~/.claude/, ~/.codex/)
-bash configs/sync.sh backup            # Copy runtime → templates (sanitize secrets after!)
-bash configs/sync.sh codex-full-auto   # Install Codex no-approval, no-sandbox aliases
+bash configs/sync.sh validate          # 验证配置格式
+bash configs/sync.sh restore           # 模板 → 运行时 (~/.claude/, ~/.codex/)
+bash configs/sync.sh backup            # 运行时 → 模板（备份后需脱敏！）
+bash configs/sync.sh codex-full-auto   # 安装 Codex 免审批、免沙箱别名
 ```
 
-Config templates are sanitized — real secrets live in env vars, never committed.
+配置模板已脱敏——真实密钥在环境变量中，永远不提交。
 
-## Selected local skills
+## 关键规则
 
-- **cc-switch-skill** — Switch Claude Code between AI providers (Baidu Qianfan, etc.). `scripts/cc-switch-run.sh` is the main entry.
-- **daily-report-table** — Convert Chinese daily report text into fixed table rows. Has its own `pyproject.toml` and `tests/`. Run tests: `cd skills/skills-local/daily-report-table && pytest`.
-- **wsl-windows-chrome** — Attach from WSL to a Windows Chrome/Edge browser with a fixed CDP port. Scripts manage CDP relay lifecycle.
-- **cc-connect-bot-setup** — Set up Claude Code as an IM bot bridge.
-- **clash-proxy** — Manage Clash proxy region policies from WSL.
-- **create-telegram-bot-bridge** — Create/rotate Telegram bots for Claude-to-IM.
-- **worktree-execution-acceptance** — Collect evidence from git worktree execution.
-- **telegram-input-flow** — Telegram input processing workflow.
-- **neocd-change-workflow** — Neo CD change management workflow.
-
-## Key rules
-
-1. Edit custom skills only inside `skills/skills-local/`.
-2. Runtime directories (`~/.codex/skills/`, `~/.claude/skills/`) are mount points, not primary storage.
-3. Never commit real API keys or tokens. Use `${VAR_NAME}` placeholders in configs.
-4. After `configs/sync.sh backup`, always check for and redact secrets before committing.
-5. Skill directory names are lowercase kebab-case.
+1. 只在 `skills/skills-local/` 内编辑自定义技能
+2. 运行时目录（`~/.codex/skills/`、`~/.claude/skills/`）是挂载点，不是主存储
+3. 永远不要提交真实的 API Key 或 Token，配置中使用 `${VAR_NAME}` 占位符
+4. 运行 `configs/sync.sh backup` 后，提交前务必检查并脱敏密钥
+5. 技能目录名使用小写连字符格式

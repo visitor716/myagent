@@ -65,10 +65,27 @@ SPOT_HEADERS = [
 
 MAIN_HTML_WIDTHS = ['80px', '80px', '100px', '100px', '90px', '90px', '100px', '140px', '320px', '140px', '100px']
 SPOT_HTML_WIDTHS = ['70px', '90px', '80px', '90px', '100px', '360px', '100px', '110px']
+HTML_TABLE_BORDER_COLOR = '#1f2329'
+HTML_TABLE_STYLE = (
+    f'width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid {HTML_TABLE_BORDER_COLOR};'
+)
+HTML_CELL_BASE_STYLE = (
+    f'border:1px solid {HTML_TABLE_BORDER_COLOR};'
+    'padding:8px 6px;'
+    'text-align:center;'
+    'vertical-align:middle;'
+    'line-height:1.6;'
+    'font-size:14px;'
+    'white-space:normal;'
+    'word-break:break-all;'
+    'overflow-wrap:anywhere;'
+)
+HTML_HEADER_CELL_STYLE = HTML_CELL_BASE_STYLE + 'background:#f5f7fa;font-weight:700;'
 
 MACHINE_RE = re.compile(r'(\d+[A-Za-z](?:\d+)?)')
-NUMBERED_SPLIT_RE = re.compile(r'\s*\d+[、.．)]\s*')
+NUMBERED_SPLIT_RE = re.compile(r'(?<![0-9A-Za-z])\d+(?:[、．)]|\.(?!\d))\s*')
 SECONDARY_ENTRY_SPLIT_RE = re.compile(r'(?<=[。；;])\s*(?=\d+[A-Za-z](?:\d+)?)')
+ENTRY_STRIP_CHARS = ' \n\t\r，,。；;'
 WINDOWS_DRIVE_RE = re.compile(r'^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$')
 WSL_MOUNT_RE = re.compile(r'^/mnt/(?P<drive>[A-Za-z])/(?P<rest>.*)$')
 PROCESS_VERB_RE = re.compile(
@@ -78,6 +95,7 @@ RESULT_MARKER_RE = re.compile(r'(恢复生产|恢复正常|复位正常|光斑(?
 ENERGY_DIRECTIONAL_OFFSET_RE = re.compile(
     r'能量(?:[^，。；;,.]{0,6}?偏[上中下左前后右里外]{1,4}|(?:往|向|朝)?[上中下左前后右里外]{1,4}偏|偏移)'
 )
+POWER_DECAY_RE = re.compile(r'功率[衰摔]减')
 
 ABNORMAL_PATTERNS = [
     re.compile(r'驱动器报警[0-9A-Za-z-]+'),
@@ -241,14 +259,14 @@ def split_entries(raw_text: str) -> list[str]:
 
     if NUMBERED_SPLIT_RE.search(normalized):
         parts = NUMBERED_SPLIT_RE.split(normalized)
-        entries = [part.strip(' ，,。；;') for part in parts if part.strip(' ，,。；;')]
+        entries = [part.strip(ENTRY_STRIP_CHARS) for part in parts if part.strip(ENTRY_STRIP_CHARS)]
     else:
-        entries = [line.strip(' ，,。；;') for line in normalized.split('\n') if line.strip(' ，,。；;')]
+        entries = [line.strip(ENTRY_STRIP_CHARS) for line in normalized.split('\n') if line.strip(ENTRY_STRIP_CHARS)]
 
     expanded: list[str] = []
     for entry in entries:
         sub_entries = SECONDARY_ENTRY_SPLIT_RE.split(entry)
-        expanded.extend(part.strip(' ，,。；;') for part in sub_entries if part.strip(' ，,。；;'))
+        expanded.extend(part.strip(ENTRY_STRIP_CHARS) for part in sub_entries if part.strip(ENTRY_STRIP_CHARS))
     return expanded
 
 
@@ -305,6 +323,8 @@ def detect_spot(process_text: str, abnormal: str) -> bool:
 
 def normalize_spot_issue(abnormal: str, process_text: str) -> str:
     combined = f'{abnormal} {process_text}'
+    if POWER_DECAY_RE.search(combined):
+        return '光斑破洞'
     if '缺失' in combined:
         return '光斑破洞'
     if '破洞' in combined:
@@ -353,7 +373,7 @@ def infer_channel(machine_full: str, text: str) -> str:
             return 'AC'
         if suffix == '2':
             return 'BD'
-    return 'AC和BD'
+    return ''
 
 
 def base_machine(machine_full: str) -> str:
@@ -407,6 +427,11 @@ def format_spot_date(raw_date: str) -> str:
 def format_file_date(raw_date: str) -> str:
     year, month, day = parse_date_string(raw_date)
     return f'{year:04d}-{month:02d}-{day:02d}'
+
+
+def format_month_folder(raw_date: str) -> str:
+    year, month, _ = parse_date_string(raw_date)
+    return f'{year:04d}-{month:02d}'
 
 
 def format_chart_date(raw_date: str) -> str:
@@ -490,11 +515,15 @@ def render_tsv(headers: list[str], rows: list[list[str]]) -> str:
     return '\n'.join(lines)
 
 
-def render_html_td(value: str, highlighted: bool) -> str:
+def render_html_cell(tag: str, value: str, style: str, highlighted: bool = False) -> str:
     escaped = escape_html_cell(value)
     if not highlighted:
-        return f'<td>{escaped}</td>'
-    return f'<td><span style="{selected_option_style()}">{escaped}</span></td>'
+        return f'<{tag} align="center" valign="middle" style="{style}">{escaped}</{tag}>'
+    return (
+        f'<{tag} align="center" valign="middle" style="{style}">'
+        f'<span style="{selected_option_style()}">{escaped}</span>'
+        f'</{tag}>'
+    )
 
 
 def selected_option_style() -> str:
@@ -523,14 +552,17 @@ def render_html_table(
 
     highlighted_columns = highlighted_columns or set()
     colgroup = ''.join(f'<col style="width: {width};" />' for width in column_widths)
-    header_line = ''.join(f'<th>{escape_html_cell(header)}</th>' for header in headers)
+    header_line = ''.join(render_html_cell('th', header, HTML_HEADER_CELL_STYLE) for header in headers)
     body_lines = []
     for row in rows:
-        cells = ''.join(render_html_td(cell, index in highlighted_columns) for index, cell in enumerate(row))
+        cells = ''.join(
+            render_html_cell('td', cell, HTML_CELL_BASE_STYLE, index in highlighted_columns)
+            for index, cell in enumerate(row)
+        )
         body_lines.append(f'<tr>{cells}</tr>')
     tbody = ''.join(body_lines)
     return (
-        '<table class="report-table">'
+        f'<table class="report-table" border="1" cellspacing="0" cellpadding="0" style="{HTML_TABLE_STYLE}">'
         f'<colgroup>{colgroup}</colgroup>'
         f'<thead><tr>{header_line}</tr></thead>'
         f'<tbody>{tbody}</tbody>'
@@ -792,6 +824,28 @@ def markdown_row(row: list[str]) -> str:
     return '| ' + ' | '.join(clean_cell(cell) for cell in row) + ' |'
 
 
+def markdown_header_line(headers: list[str]) -> str:
+    return '| ' + ' | '.join(headers) + ' |'
+
+
+def markdown_separator_line(column_count: int) -> str:
+    return '| ' + ' | '.join([':---:'] * column_count) + ' |'
+
+
+def markdown_cells(line: str) -> list[str]:
+    stripped = line.strip()
+    if not stripped.startswith('|') or not stripped.endswith('|'):
+        return []
+    return [cell.strip() for cell in stripped.strip('|').split('|')]
+
+
+def is_markdown_separator(line: str, column_count: int) -> bool:
+    cells = markdown_cells(line)
+    if len(cells) != column_count:
+        return False
+    return all(cell and set(cell) <= {'-', ':'} for cell in cells)
+
+
 def ensure_markdown_note(file_path: Path, headers: list[str], title: str) -> None:
     if file_path.exists():
         content = file_path.read_text(encoding='utf-8').strip()
@@ -821,27 +875,34 @@ def ensure_markdown_note(file_path: Path, headers: list[str], title: str) -> Non
                 file_path.write_text('\n'.join(new_lines) + '\n', encoding='utf-8')
             return
 
-    header_line = '| ' + ' | '.join(headers) + ' |'
-    separator_line = '| ' + ' | '.join([':---:'] * len(headers)) + ' |'
+    header_line = markdown_header_line(headers)
+    separator_line = markdown_separator_line(len(headers))
     content = f'# {title}\n\n{header_line}\n{separator_line}\n'
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content, encoding='utf-8')
 
 
-def append_rows_to_markdown_note(file_path: Path, headers: list[str], title: str, rows: list[list[str]]) -> None:
+def markdown_table_insert_index(lines: list[str], headers: list[str]) -> int:
+    for index, line in enumerate(lines):
+        if markdown_cells(line) != headers:
+            continue
+        if index + 1 < len(lines) and is_markdown_separator(lines[index + 1], len(headers)):
+            return index + 2
+        return index + 1
+    return len(lines)
+
+
+def prepend_rows_to_markdown_note(file_path: Path, headers: list[str], title: str, rows: list[list[str]]) -> None:
     if not rows:
         return
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
     ensure_markdown_note(file_path, headers, title)
-    existing_content = file_path.read_text(encoding='utf-8')
-
-    with file_path.open('a', encoding='utf-8') as handle:
-        if existing_content and not existing_content.endswith('\n'):
-            handle.write('\n')
-        for row in rows:
-            handle.write(markdown_row(row))
-            handle.write('\n')
+    existing_lines = file_path.read_text(encoding='utf-8').splitlines()
+    insert_index = markdown_table_insert_index(existing_lines, headers)
+    new_lines = [markdown_row(row) for row in rows]
+    updated_lines = existing_lines[:insert_index] + new_lines + existing_lines[insert_index:]
+    file_path.write_text('\n'.join(updated_lines).rstrip() + '\n', encoding='utf-8')
 
 
 def xlsx_styles_xml() -> str:
@@ -1177,6 +1238,10 @@ def build_chart_export(entries: Iterable[ParsedEntry], max_index: int) -> ChartE
         if not entry.is_spot:
             continue
 
+        if not entry.channel:
+            if entry.machine_base not in unmapped_rows:
+                unmapped_rows.append(entry.machine_base)
+            continue
         channels = ['AC', 'BD'] if entry.channel == 'AC和BD' else [entry.channel]
         for channel in channels:
             row_key = f'{entry.machine_base}-{channel}'
@@ -1201,6 +1266,14 @@ def write_chart_copy_html(file_path: Path, chart_export: ChartExport, raw_date: 
     )
 
 
+def report_output_dir(output_root: str, raw_date: str) -> Path:
+    root = resolve_path(output_root)
+    month_folder = format_month_folder(raw_date)
+    if re.fullmatch(r'\d{4}-\d{2}', root.name):
+        return root if root.name == month_folder else root.parent / month_folder
+    return root / month_folder
+
+
 def persist_outputs(
     main_rows: list[list[str]],
     spot_rows: list[list[str]],
@@ -1210,7 +1283,7 @@ def persist_outputs(
     chart_export: ChartExport | None,
     chart_copy: bool,
 ) -> list[str]:
-    output_dir = resolve_path(metadata['output_dir'])
+    output_dir = report_output_dir(metadata['output_dir'], metadata['date'])
     xlsx_file = metadata.get('xlsx_file') or resolve_filename_template(DEFAULTS['xlsx_file'], metadata['date'])
     xlsx_path = output_dir / xlsx_file
     write_xlsx = write_mode in ('all', 'xlsx')
@@ -1219,12 +1292,12 @@ def persist_outputs(
     saved_messages: list[str] = []
     if write_xlsx:
         main_note_path = output_dir / metadata.get('main_note', DEFAULTS['main_note'])
-        append_rows_to_markdown_note(main_note_path, MAIN_HEADERS, '每天日报', main_rows)
-        saved_messages.append(f'已追加日报到: {display_path(main_note_path)}')
+        prepend_rows_to_markdown_note(main_note_path, MAIN_HEADERS, '每天日报', main_rows)
+        saved_messages.append(f'已插入日报到: {display_path(main_note_path)}')
         if spot_rows:
             spot_note_path = output_dir / metadata.get('spot_note', DEFAULTS['spot_note'])
-            append_rows_to_markdown_note(spot_note_path, SPOT_HEADERS, '光斑调试记录', spot_rows)
-            saved_messages.append(f'已追加光斑调试记录到: {display_path(spot_note_path)}')
+            prepend_rows_to_markdown_note(spot_note_path, SPOT_HEADERS, '光斑调试记录', spot_rows)
+            saved_messages.append(f'已插入光斑调试记录到: {display_path(spot_note_path)}')
 
         write_xlsx_workbook(xlsx_path, main_rows, spot_rows)
         saved_messages.append(f'已生成 Excel 表格: {display_path(xlsx_path)}')
@@ -1477,7 +1550,7 @@ def build_parser() -> argparse.ArgumentParser:
         '--write-mode',
         choices=('all', 'xlsx', 'html', 'none'),
         default=DEFAULT_WRITE_MODE,
-        help='写入模式。默认 xlsx。all=同xlsx（wecom-html时额外HTML），xlsx=仅XLSX，html=仅HTML，none=全部跳过。',
+        help='写入模式。默认 xlsx。all=日报+光斑笔记+XLSX（wecom-html时额外HTML），xlsx=日报+光斑笔记+XLSX，html=仅HTML，none=全部跳过。',
     )
     parser.add_argument(
         '--preview',

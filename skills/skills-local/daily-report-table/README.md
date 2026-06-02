@@ -61,15 +61,18 @@ tcp-daily-report-table
 
 选择 `1`、`2` 或 `3` 并实际保存后，CLI 会记住这个保存目录。后续直接运行 `tcp-daily-report-table`，或不带 `--output-dir` 的命令，都会默认使用上次保存目录。
 
-默认只生成 Excel 文件：
+默认写入当前月份文件夹：
 
 ```text
-日报表格-YYYY-MM-DD.xlsx
+<输出目录>\YYYY-MM\每天日报.md
+<输出目录>\YYYY-MM\光斑调试记录.md
+<输出目录>\YYYY-MM\日报表格-YYYY-MM-DD.xlsx
+<输出目录>\YYYY-MM\光斑调试记录.xlsx
 ```
 
-不会生成 `.md` 或 `.tsv`。如果确实需要旧的 Markdown/TSV 输出，再显式使用 `--write-mode all`、`--write-mode notes` 或 `--write-mode tsv`。
+Markdown 笔记用于 Obsidian 查看，新记录会插入在表头下面的前几行，最新日报不再追加到文件最底部。
 
-直接生成 Excel 并写入默认保存目录：
+直接生成日报并写入默认保存目录的当月文件夹：
 
 ```bash
 tcp-daily-report-table --date 2026/5/17 --name 詹香平 --text "6B1能量偏右上，调整DOE后光斑形貌OK"
@@ -99,21 +102,7 @@ EOF
 tcp-daily-report-table --write-mode none --preview tsv --text "6B1能量偏右上，调整DOE后光斑形貌OK"
 ```
 
-如需旧版 TSV 表格：
-
-```bash
-tcp-daily-report-table --write-mode tsv --text "6B1能量偏右上，调整DOE后光斑形貌OK"
-```
-
-TSV 文件使用 `UTF-8 with BOM` 保存，Windows Excel、WPS 和企业微信更容易正确识别中文编码。旧版无 BOM 的 TSV 文件会在下次追加时自动补上 BOM。
-
-如果 TSV 打开后仍然没有分列，直接使用生成的 Excel 文件：
-
-```text
-日报表格-YYYY-MM-DD.xlsx
-```
-
-这是实际 `.xlsx` 工作簿，日期、组别、客户基地等字段会在不同单元格里。
+生成的是实际 `.xlsx` 工作簿，日期、组别、客户基地等字段会在不同单元格里。
 
 指定输出目录：
 
@@ -133,25 +122,13 @@ tcp-daily-report-table --output-dir "D:\Obsidian\MyNote\03.工作\扬州晶澳F3
 tcp-daily-report-table --format wecom-html --write-mode html --preview tsv --text "6B1能量偏右上，调整DOE后光斑形貌OK"
 ```
 
+企业微信 HTML 的表格边框、单元格居中和表头样式会写成内联样式，复制到企业微信或在线表格后更容易保留外边框和居中效果。
+
 ## 安装后的命令
 
-`tcp-daily-report-table` 是独立日报 CLI 主命令。
+- `tcp-daily-report-table` 是独立日报 CLI 主命令。
 
 ## 输出文件
-
-默认写入：
-
-- `日报表格-{date}.xlsx`
-
-仅在显式指定对应写入模式时生成：
-
-- `每天日报.md`
-- `光斑调试记录.md`
-- `每天日报.tsv`
-- `光斑调试记录.tsv`
-- `企业微信日报-{date}.html`
-- `光斑异常图表列-{date}.tsv`
-- `光斑异常图表复制-{date}.html`
 
 默认输出目录是：
 
@@ -159,7 +136,22 @@ tcp-daily-report-table --format wecom-html --write-mode html --preview tsv --tex
 D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化
 ```
 
-可以用 `--output-dir` 改成任意目录。
+可以用 `--output-dir` 改成任意根目录。实际文件会按日报日期自动写入根目录下的月度子目录，例如 `2026-05`。
+
+默认写入：
+
+- `YYYY-MM\每天日报.md`
+- `YYYY-MM\光斑调试记录.md`
+- `YYYY-MM\日报表格-{date}.xlsx`
+- `YYYY-MM\光斑调试记录.xlsx`
+
+光斑调试表的异常类型会按规则归一化：文本里出现 `功率衰减`（兼容错字 `功率摔减`）时写 `光斑破洞`。
+
+仅在显式指定对应写入模式时生成：
+
+- `YYYY-MM\企业微信日报-{date}.html`
+- `YYYY-MM\光斑异常图表列-{date}.tsv`
+- `YYYY-MM\光斑异常图表复制-{date}.html`
 
 CLI 会把上次选择的保存目录记录到用户配置文件：
 

@@ -293,6 +293,24 @@ cc-connect daemon restart
 
 After the restart, send `/new` to the Telegram bot before testing so the project does not resume an old broken ACP session.
 
+If `hermes status` is already consistent (`Provider: OpenAI Codex`, `Model: gpt-5.5`) but the request fails before an HTTP response with:
+
+```text
+TypeError: 'NoneType' object is not iterable
+Provider: openai-codex  Model: gpt-5.5
+Endpoint: https://chatgpt.com/backend-api/codex
+```
+
+then treat it as a stale Hermes Codex Responses adapter, not a provider switch issue. Run:
+
+```bash
+hermes update
+hermes chat -Q --provider openai-codex -q 'Reply with exactly OK.'
+ps -o pid,ppid,stat,etime,cmd -u "$USER" | rg 'cc-connect|hermes|acp_adapter'
+```
+
+Stop or restart any pre-update Hermes/ACP process before retesting. A fixed path returns `OK` and the log shows `Turn ended: reason=text_response`.
+
 ## Recovery
 
 If a permission change is wrong, restore the newest backup named like:

@@ -1,0 +1,13 @@
+{
+  "name": "windows-system-settings",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/windows-system-settings",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/windows-system-settings",
+    "/home/zhanxp/.claude/skills/windows-system-settings",
+    "/home/zhanxp/.hermes/skills/myagent/windows-system-settings"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for safe Windows system setting adjustments from WSL, including brightness, volume, monitor/sleep timeouts, and power schemes."
+}
