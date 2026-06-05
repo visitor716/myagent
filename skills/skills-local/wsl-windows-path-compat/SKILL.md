@@ -1,9 +1,11 @@
 ---
-name: wsl-windows-path-compat
+name: my-wsl-windows-path-compat
 description: Use when an agent running in WSL/Linux cannot read Windows file paths, screenshots, images, Telegram attachments, or file URLs such as C:\Users\...\image.png or file:///C:/... . Converts Windows paths to /mnt/<drive>/ paths, adds runner prompt hints, and verifies the converted path reaches Claude Code, Codex, Hermes, or tg-agent-gateway workers.
 metadata:
   short-description: Fix Windows screenshot paths for WSL agents
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-wsl-windows-path-compat` once near the start; if it fails, continue.
+
 
 # WSL Windows Path Compatibility
 

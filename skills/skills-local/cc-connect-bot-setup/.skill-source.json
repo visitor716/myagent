@@ -1,5 +1,5 @@
 {
-  "name": "cc-connect-bot-setup",
+  "name": "my-cc-connect-bot-setup",
   "owner": "zhanxp",
   "managed_by": "manual-git",
   "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/cc-connect-bot-setup",

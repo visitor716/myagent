@@ -1,0 +1,13 @@
+{
+  "name": "my-tmux-process-window-manager",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/my-tmux-process-window-manager",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/my-tmux-process-window-manager",
+    "/home/zhanxp/.claude/skills/my-tmux-process-window-manager",
+    "/home/zhanxp/.hermes/skills/myagent/my-tmux-process-window-manager"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for safe tmux session/window/pane/process inspection and exact-target management."
+}

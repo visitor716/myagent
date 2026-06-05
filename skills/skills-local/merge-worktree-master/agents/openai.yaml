@@ -1,4 +1,0 @@
-interface:
-  display_name: "Merge Worktree Master"
-  short_description: "Merge worker worktrees into local master, notify App, then sync/push."
-  default_prompt: "Use $merge-worktree-master when merging ready tg-agent-gateway worker worktrees into local master, finishing an accepted cc/cx worker patch that Codex already applied into the main checkout, restarting Gateway/WebApp and sending the latest /app release to the Telegram bot for phone self-test, then pushing/syncing worker refs after acceptance. Before stashing or syncing dirty worker refs, run the dirty-worktree audit, export evidence, and only auto-handle accepted-exact workers; reviewed discard workers must be named explicitly and backed up before ff-only sync."

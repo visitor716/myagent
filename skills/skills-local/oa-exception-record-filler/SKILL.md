@@ -1,7 +1,9 @@
 ---
-name: oa-exception-record-filler
+name: my-oa-exception-record-filler
 description: Fill and save DR Laser OA 新建异常记录 forms from TCP daily report text. Use when the user asks to add 日报内容 into OA 异常记录表, 新建异常记录, 5.xx 异常记录, or says to save OA exception records without submitting.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-oa-exception-record-filler` once near the start; if it fails, continue.
+
 
 # OA Exception Record Filler
 

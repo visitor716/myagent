@@ -1,9 +1,11 @@
 ---
-name: codex-task-queue
+name: my-codex-task-queue
 description: Queue follow-up requirements for an already-running Codex terminal or tmux session, then wait for an explicit completion marker, send /compact, and inject the next queued task. Use when the user wants current task completion, compaction, and queued task continuation, asks to add requirements to a Codex queue, or wants a persistent local Codex task backlog.
 metadata:
   short-description: Queue Codex tasks and compact between runs
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-codex-task-queue` once near the start; if it fails, continue.
+
 
 # Codex Task Queue
 

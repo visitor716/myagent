@@ -1,7 +1,9 @@
 ---
-name: cc-switch-skill
+name: my-cc-switch-skill
 description: Diagnose and operate cc-switch from WSL or Windows-backed homes. Use when the user mentions cc-switch, providers, models, APIs, provider-count mismatches, Windows GUI database initialization failures such as “database is locked”, wants to list/switch/add/edit/validate cc-switch providers, or says phrases such as “切换到百度 CC” / “百度 CC” to switch bdcc1 Claude Code to Baidu Qianfan.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-cc-switch-skill` once near the start; if it fails, continue.
+
 
 # CC Switch Skill
 

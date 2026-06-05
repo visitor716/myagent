@@ -1,5 +1,5 @@
 {
-  "name": "oa-exception-record-filler",
+  "name": "my-oa-exception-record-filler",
   "owner": "zhanxp",
   "managed_by": "manual-git",
   "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/oa-exception-record-filler",

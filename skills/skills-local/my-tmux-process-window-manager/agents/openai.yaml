@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tmux Process Manager"
+  short_description: "Inspect, classify, and safely operate tmux panes"
+  default_prompt: "Use $my-tmux-process-window-manager to inventory tmux sessions, classify pane activity, capture output, send commands, stop stuck panes, or clean completed sessions safely."

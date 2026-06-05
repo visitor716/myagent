@@ -1,4 +1,4 @@
 interface:
-  display_name: "Disable MCP Startup"
+  display_name: "my-Disable MCP Startup"
   short_description: "Disable startup MCP noise"
   default_prompt: "Disable broken MCP startup entries for Codex and Claude Code. Diagnose codex mcp list and feature flags first, handle MCP entries that reappear after Codex updates, remove only the implicated startup blocks or allowlist entries, then validate that startup noise will not return."

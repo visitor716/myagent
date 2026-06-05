@@ -3,5 +3,6 @@
   "runtime_targets": [
     "/home/zhanxp/.codex/skills/codex-task-queue"
   ],
-  "sync_policy": "symlink-preferred"
+  "sync_policy": "symlink-preferred",
+  "name": "my-codex-task-queue"
 }

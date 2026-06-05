@@ -1,7 +1,9 @@
 ---
-name: personal-bookkeeping
+name: my-personal-bookkeeping
 description: Analyze personal transaction exports from Alipay, WeChat Pay, or bank CSV files. Use when the user asks for 记账, 账单分析, 每月花费, 支付宝/微信/银行卡交易明细统计, 消费分类, 支出汇总, or wants reimbursable work expenses such as 出差酒店房费 removed from personal spending.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-personal-bookkeeping` once near the start; if it fails, continue.
+
 
 # Personal Bookkeeping
 

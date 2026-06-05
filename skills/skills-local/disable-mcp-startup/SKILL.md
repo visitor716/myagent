@@ -1,7 +1,9 @@
 ---
-name: disable-mcp-startup
+name: my-disable-mcp-startup
 description: Disable broken or unwanted MCP startup entries for Codex and Claude Code without broad config rewrites. Use when the user asks to 禁用 MCP, 不启动 MCP 工具, remove MCP startup warnings, silence chrome-devtools or context7 startup failures, avoid browser MCP, clean MCP allowlists, fix MCP entries reappearing after Codex updates, or ensure runtime and myagent config templates do not re-enable MCP on restore.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-disable-mcp-startup` once near the start; if it fails, continue.
+
 
 # Disable MCP Startup
 

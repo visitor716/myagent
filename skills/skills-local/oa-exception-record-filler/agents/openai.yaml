@@ -1,4 +1,4 @@
 interface:
-  display_name: "OA 异常记录填写"
+  display_name: "my-OA 异常记录填写"
   short_description: "从 TCP 日报生成并填写 OA 新建异常记录，只保存不提交"
-  default_prompt: "Use $oa-exception-record-filler to fill the OA 新建异常记录 from pasted TCP 日报 and save without submitting."
+  default_prompt: "Use $my-oa-exception-record-filler to fill the OA 新建异常记录 from pasted TCP 日报 and save without submitting."

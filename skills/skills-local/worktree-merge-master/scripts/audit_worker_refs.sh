@@ -3,7 +3,7 @@ set -euo pipefail
 
 DEFAULT_REPO="/home/zhanxp/projects/tg-agent-gateway"
 DEFAULT_BASE="master"
-DEFAULT_REFS="master wt/cc1 wt/cc2 wt/cc3 wt/cc4 wt/cc5 wt/cc6 wt/cc7 wt/cc8 wt/cx1 wt/cx2"
+DEFAULT_REFS="master wt/cc1 wt/cc2 wt/cc3 wt/cc4 wt/cc5 wt/cc6 wt/cc7 wt/cc8 wt/cc9 wt/cc10 wt/cx1 wt/cx2 wt/cx3 wt/cx4 wt/cx5"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/worktree_activity.sh"

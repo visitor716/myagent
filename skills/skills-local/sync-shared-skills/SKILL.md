@@ -1,7 +1,9 @@
 ---
-name: sync-shared-skills
+name: my-sync-shared-skills
 description: Sync common user skills and reusable AI runtime configuration between Codex, Claude Code, Hermes, and the myagent source-of-truth repo. Use when the user says "同步skill", "同步技能", "sync skill", "sync skills", "同步配置", "备份配置", "备份 Codex 配置", or asks to mirror skills/configs/runtime agent experience into myagent. Sync from the selected source side to the target while skipping runtime-only, system, unmanaged conflicts, and sensitive runtime state.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-sync-shared-skills` once near the start; if it fails, continue.
+
 
 # Sync Shared Skills
 

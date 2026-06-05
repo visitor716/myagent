@@ -1,7 +1,9 @@
 ---
-name: clash-proxy
+name: my-clash-proxy
 description: "Diagnose and safely configure Windows and WSL proxy networking. Use when the user mentions Windows proxy, WSL proxy, Clash, Clash Verge, Mihomo, sing-box, V2Ray, system proxy, WinHTTP, TUN, DNS hijack, aTrust, 深信服/Sangfor VPN, company intranet split routing, 企业微信内网访问, Clash/aTrust conflicts, http_proxy/https_proxy/all_proxy, tmux proxy inheritance, proxy region policy such as US-first Japan-fallback no-Hong-Kong, or asks about Windows/WSL 网络代理/代理软件/代理环境."
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-clash-proxy` once near the start; if it fails, continue.
+
 
 # Windows WSL Proxy
 

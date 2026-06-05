@@ -1,7 +1,9 @@
 ---
-name: reimbursement-screenshot-organizer
+name: my-reimbursement-screenshot-organizer
 description: Organize and audit reimbursement/expense screenshots, PDFs, and downloaded email attachments by reading file content, extracting date, merchant, amount, document type, evidence type, invoice fields, and confidence, then safely renaming, classifying, checking compliance, simplifying/numbering train-ticket, Didi-itinerary, and comparison-chart filenames, cropping/merging itinerary PDFs into Word documents, merging comparison chart images into a single Word grid, generating copy-ready OA travel/detail invoice tables, and optionally browser-filling OA fields without saving/submitting. Use when the user mentions 报销, 费用报销, 报销规范核对, 发票截图, 支付凭证, 票据整理, 滴滴发票, 火车票命名, 铁路电子客票, 行程单, 行程单命名, 行程单合并, 行程单转 Word, 比价图, 比价图命名, 比价图合并, 邮箱发票, OA复制填写, OA自动填, 差旅报销模块, 发票号码填写, receipt screenshots, PDF invoices, expense evidence, or asks Codex to rename/classify/check/download/crop/merge files in a reimbursement directory.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-reimbursement-screenshot-organizer` once near the start; if it fails, continue.
+
 
 # Reimbursement Screenshot Organizer
 

@@ -1,9 +1,11 @@
 ---
-name: merge-worktree-master
+name: my-worktree-merge-master
 description: Safely merge tg-agent-gateway worker worktrees into local master, verify, restart the Gateway/WebApp, send the latest /app release to the Telegram bot for phone self-test, then optionally push/sync/clean worker refs. Use when the user asks to merge ready worktrees, batch merge worker branches, finish accepted cc/cx patches, self-test the latest master on phone, push worker refs after acceptance, inspect/classify dirty worktrees, clean stale worker sessions, or answer whether active worker branches are current.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-worktree-merge-master` once near the start; if it fails, continue.
 
-# Merge Worktree Master
+
+# Worktree Merge Master
 
 Use this skill for `tg-agent-gateway` multi-worktree integration and worker-branch hygiene. It has four common lanes:
 
@@ -22,9 +24,10 @@ run the completed-worker tmux cleanup for the affected `cc*` workers before the
 final answer, unless the user explicitly asks to keep the worker window.
 
 User standing preference for `/home/zhanxp/projects/tg-agent-gateway`: when the
-user says `merge` for accepted worker work, treat it as approval to continue the
-local merge-to-master lane without waiting for separate restart or `/app`
-messages. After a successful merge into local `master`, automatically:
+user says `merge` / `合并` / `发版` (for accepted worker work), treat it as
+approval to continue the local merge-to-master lane without waiting for
+separate restart or `/app` messages. After a successful merge into local
+`master`, automatically:
 
 1. Run final verification in `master`.
 2. Build/restart the local Gateway/WebApp.
@@ -56,25 +59,25 @@ should produce a fresh App entry for phone self-test.
 Always preview first:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/merge_ready_worktrees.sh --dry-run
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/merge_ready_worktrees.sh --dry-run
 ```
 
 For a read-only branch/worktree audit:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/audit_worker_refs.sh
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/audit_worker_refs.sh
 ```
 
 Before syncing dirty worker refs, classify the dirty contents and export evidence:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/audit_dirty_worktrees.sh
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/audit_dirty_worktrees.sh
 ```
 
 Apply only after reading the dry-run report:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/merge_ready_worktrees.sh --apply
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/merge_ready_worktrees.sh --apply
 ```
 
 The default target repo is:
@@ -86,13 +89,13 @@ The default target repo is:
 Default worker scan order:
 
 ```text
-cc2 cc3 cc4 cc5 cc6 cc7 cc8
+cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10
 ```
 
 Default active branch set for sync/audit:
 
 ```text
-master wt/cc1 wt/cc2 wt/cc3 wt/cc4 wt/cc5 wt/cc6 wt/cc7 wt/cc8 wt/cx1 wt/cx2
+master wt/cc1 wt/cc2 wt/cc3 wt/cc4 wt/cc5 wt/cc6 wt/cc7 wt/cc8 wt/cc9 wt/cc10 wt/cx1 wt/cx2 wt/cx3 wt/cx4 wt/cx5
 ```
 
 ## Safety Rules
@@ -133,7 +136,8 @@ candidate:
 
 ## Accepted Patch Lane
 
-Use this lane when the user says `merge` after a `codex-plan-claude-exec-review`
+Use this lane when the user says `merge`/`合并`/`发版` after a
+`codex-plan-claude-exec-review`
 run where Codex reviewed a `cc*` worker diff, applied the accepted patch into
 `/home/zhanxp/projects/tg-agent-gateway`, and intentionally left the worker
 worktree dirty plus the `claude-cc*` tmux session open until final disposition.
@@ -195,7 +199,7 @@ worker worktrees are dirty. The goal is to prove the disposition before syncing:
 Run the classifier first:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/audit_dirty_worktrees.sh
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/audit_dirty_worktrees.sh
 ```
 
 The script writes evidence under `.git/codex-backups/dirty-worktree-audit-*`,
@@ -205,14 +209,14 @@ path-by-path comparison against `master`.
 Automatic handling is intentionally narrow:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/audit_dirty_worktrees.sh --apply-accepted
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/audit_dirty_worktrees.sh --apply-accepted
 ```
 
 This only stashes and fast-forwards `accepted-exact` workers. For work reviewed
 as obsolete or superseded, pass the exact worker list:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/audit_dirty_worktrees.sh --stash-discarded "cc2 cc3"
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/audit_dirty_worktrees.sh --stash-discarded "cc2 cc3"
 ```
 
 `--stash-discarded` is still reversible: it exports evidence, runs
@@ -254,13 +258,13 @@ git -C /home/zhanxp/worktrees/tg-agent-gateway/cc7 reset --hard master
 8. Close completed Claude worker tmux sessions for any synced `cc*` worker whose work is accepted:
 
 ```bash
-   bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3" --apply
+   bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3" --apply
 ```
 
 Use a dry-run first when the affected worker set is unclear:
 
 ```bash
-   bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3"
+   bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3"
 ```
 
 ### Pushing Worker Refs
@@ -268,7 +272,7 @@ Use a dry-run first when the affected worker set is unclear:
 Push fast-forward or new worker refs directly:
 
 ```bash
-git push origin wt/cc1:wt/cc1 wt/cc2:wt/cc2 wt/cc3:wt/cc3 wt/cc4:wt/cc4 wt/cc5:wt/cc5 wt/cc6:wt/cc6 wt/cc7:wt/cc7 wt/cc8:wt/cc8 wt/cx1:wt/cx1 wt/cx2:wt/cx2
+git push origin wt/cc1:wt/cc1 wt/cc2:wt/cc2 wt/cc3:wt/cc3 wt/cc4:wt/cc4 wt/cc5:wt/cc5 wt/cc6:wt/cc6 wt/cc7:wt/cc7 wt/cc8:wt/cc8 wt/cc9:wt/cc9 wt/cc10:wt/cc10 wt/cx1:wt/cx1 wt/cx2:wt/cx2 wt/cx3:wt/cx3 wt/cx4:wt/cx4 wt/cx5:wt/cx5
 ```
 
 If a remote worker branch diverged, do not silently force push. Only after the user explicitly asks to handle that branch, use an exact-SHA lease:
@@ -283,7 +287,7 @@ Keep a local backup branch for the overwritten remote worker commit.
 
 When answering whether branches are unified, distinguish:
 
-- **Active work pool**: `master`, `wt/cc1`-`wt/cc8`, `wt/cx1`, `wt/cx2`.
+- **Active work pool**: `master`, `wt/cc1`-`wt/cc10`, `wt/cx1`-`wt/cx5`.
 - **Historical branches**: `backup/*`, old `origin/wt/bdcc*`, old `origin/wt/hm5`, review branches, and ad hoc experiment branches.
 
 It is acceptable for historical branches to differ from `master`; do not rewrite or delete them unless the user explicitly asks.
@@ -318,7 +322,7 @@ git fetch origin --prune
 
 4. Re-run the audit script. `Origin Heads Not At origin/master` should be empty except for deliberately retained branches.
 
-Do not delete active refs (`origin/master`, `origin/wt/cc1`-`origin/wt/cc8`, `origin/wt/cx1`, `origin/wt/cx2`) as part of historical cleanup.
+Do not delete active refs (`origin/master`, `origin/wt/cc1`-`origin/wt/cc10`, `origin/wt/cx1`-`origin/wt/cx5`) as part of historical cleanup.
 
 ## Close Completed Worker Tmux Sessions
 
@@ -327,15 +331,15 @@ Use this lane when the user asks to close completed windows, tmux panes, or work
 1. Confirm active refs are synced and worker worktrees are clean:
 
 ```bash
-bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/audit_worker_refs.sh
+bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/audit_worker_refs.sh
 git worktree list --porcelain
 ```
 
 2. Prefer the guarded cleanup script. It is dry-run by default and only closes sessions with `--apply`:
 
 ```bash
-   bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3"
-   bash /home/zhanxp/projects/myagent/skills/skills-local/merge-worktree-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3" --apply
+   bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3"
+   bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/cleanup_completed_worker_tmux.sh --workers "cc2 cc3" --apply
 ```
 
 The script only considers `claude-*` sessions whose pane cwd is inside the worker worktree, skips dirty worktrees, skips workers whose branch is not contained in `master`, skips workers with active/planned DB rows, and skips panes that do not look like a completed Claude final report.
@@ -358,7 +362,7 @@ done
 5. Verify no process cwd remains under the worker worktrees:
 
 ```bash
-for d in /home/zhanxp/worktrees/tg-agent-gateway/cc{1..8} /home/zhanxp/worktrees/tg-agent-gateway/cx1 /home/zhanxp/worktrees/tg-agent-gateway/cx2; do
+for d in /home/zhanxp/worktrees/tg-agent-gateway/cc{1..10} /home/zhanxp/worktrees/tg-agent-gateway/cx{1..5}; do
   printf '\n== %s ==\n' "$d"
   for p in /proc/[0-9]*; do
     cwd=$(readlink "$p/cwd" 2>/dev/null || true)

@@ -1,0 +1,14 @@
+{
+  "name": "my-worktree-merge-master",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/worktree-merge-master",
+    "/home/zhanxp/.agents/skills/worktree-merge-master",
+    "/home/zhanxp/.claude/skills/worktree-merge-master",
+    "/home/zhanxp/.hermes/skills/myagent/worktree-merge-master"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local workflow skill for safely merging tg-agent-gateway worker worktrees into local master, restarting/notifying the App for phone self-test, then syncing, pushing, auditing, and cleaning worker refs."
+}

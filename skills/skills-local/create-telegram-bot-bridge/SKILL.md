@@ -1,7 +1,9 @@
 ---
-name: create-telegram-bot-bridge
+name: my-create-telegram-bot-bridge
 description: Use when the user wants to create a fresh Telegram bot for Claude-to-IM, rotate the Telegram bot token, rebind the bridge to a new Telegram bot, or clean up a mistakenly-created BotFather bot. This skill drives BotFather or Telegram Web, resolves the private chat_id, updates ~/.claude-to-im/config.env, optionally restarts the bridge, validates the new bot, and safely deletes mistaken bots only through a guarded script.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-create-telegram-bot-bridge` once near the start; if it fails, continue.
+
 
 # Create Telegram Bot Bridge
 

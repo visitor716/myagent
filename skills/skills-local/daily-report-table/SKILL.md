@@ -1,7 +1,9 @@
 ---
-name: daily-report-table
+name: my-daily-report-table
 description: Convert pasted TCP daily report text into fixed table rows for the main daily report and the optional 光斑调试表. Use when the user provides Chinese日报/调试记录, wants fixed企业微信或Markdown表格输出, or needs to turn光斑、能量偏移、设备异常 notes into structured rows.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-daily-report-table` once near the start; if it fails, continue.
+
 
 # Daily Report Table
 

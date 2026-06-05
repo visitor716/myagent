@@ -1,7 +1,9 @@
 ---
-name: tg-app-release-command
+name: my-tg-app-release-command
 description: Implement, verify, or operate tg-agent-gateway `/app`, `/webapp`, and `/latest_app` commands so they send the latest WebApp entry to the Telegram bot with release version, branch name, commit, deployment time, latest update notes, and fresh WebApp buttons. Use when the user asks to make `/app` send the latest app, include version/branch/deploy time/update content, make version change across branches, or diagnose stale WebApp release information.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-tg-app-release-command` once near the start; if it fails, continue.
+
 
 # TG App Release Command
 

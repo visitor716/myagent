@@ -4,5 +4,6 @@
     "/home/zhanxp/.codex/skills/sync-shared-skills",
     "/home/zhanxp/.claude/skills/sync-shared-skills"
   ],
-  "sync_policy": "symlink-preferred"
+  "sync_policy": "symlink-preferred",
+  "name": "my-sync-shared-skills"
 }

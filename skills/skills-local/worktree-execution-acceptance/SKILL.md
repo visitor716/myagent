@@ -1,9 +1,11 @@
 ---
-name: worktree-execution-acceptance
+name: my-worktree-execution-acceptance
 description: Use when validating whether Git worktree isolation is truly wired into an agent or runner task execution flow. Focuses on proving the real process cwd/pwd is the worker worktree, not only that worktrees exist. Checks worktree list, worker config, database task records, runner cwd resolution, logs, and an optional temporary-file isolation probe without modifying business code.
 metadata:
   short-description: Validate real worktree execution cwd
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-worktree-execution-acceptance` once near the start; if it fails, continue.
+
 
 # Worktree Execution Acceptance
 

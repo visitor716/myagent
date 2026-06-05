@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DEFAULT_REPO="/home/zhanxp/projects/tg-agent-gateway"
-DEFAULT_WORKERS="cc2 cc3 cc4 cc5 cc6 cc7 cc8"
+DEFAULT_WORKERS="cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10"
 
 REPO="$DEFAULT_REPO"
 BASE_REF="master"
@@ -21,7 +21,7 @@ merged/synced. Default mode is dry-run; no tmux session is killed unless
 Options:
   --repo <path>       Main repo path (default: /home/zhanxp/projects/tg-agent-gateway)
   --base <ref>        Accepted base ref (default: master)
-  --workers "<list>"  Space-separated workers to inspect (default: cc2 cc3 cc4 cc5 cc6 cc7 cc8)
+  --workers "<list>"  Space-separated workers to inspect (default: cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10)
   --apply            Kill stale completed sessions
   --dry-run          Preview only (default)
   --no-fetch         Skip git fetch origin --prune

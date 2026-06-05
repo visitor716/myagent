@@ -1,5 +1,5 @@
 {
-  "name": "windows-system-settings",
+  "name": "my-windows-system-settings",
   "owner": "zhanxp",
   "managed_by": "manual-git",
   "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/windows-system-settings",

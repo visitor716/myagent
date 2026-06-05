@@ -1,7 +1,9 @@
 ---
-name: telegram-input-flow
+name: my-telegram-input-flow
 description: Implement mobile-friendly Telegram Bot multi-step text and task execution flows. Use when Codex needs to convert button-driven Telegram interactions into "tap button, prompt for text, next message creates/updates an entity" flows, or when adding awaiting-input session state, /cancel handling, callback_query cleanup, Running cards, async task completion/failure reports, success action buttons, and tests for Telegraf/Telegram bot UX.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-telegram-input-flow` once near the start; if it fails, continue.
+
 
 # Telegram Input Flow
 

@@ -3,7 +3,7 @@ set -euo pipefail
 
 DEFAULT_REPO="/home/zhanxp/projects/tg-agent-gateway"
 DEFAULT_BASE="master"
-DEFAULT_WORKERS="cc1 cc2 cc3 cc4 cc5 cc6 cc7 cc8 cx1 cx2"
+DEFAULT_WORKERS="cc1 cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10 cx1 cx2 cx3 cx4 cx5"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/worktree_activity.sh"
@@ -29,7 +29,7 @@ Default mode is evidence-only: no worktree, branch, stash, or ref is modified.
 Options:
   --repo <path>               Main repo path (default: /home/zhanxp/projects/tg-agent-gateway)
   --base <ref>                Base branch/ref (default: master)
-  --workers "<list>"          Space-separated workers (default: cc1-cc8 cx1 cx2)
+  --workers "<list>"          Space-separated workers (default: cc1-cc10 cx1-cx5)
   --export-dir <path>         Evidence directory (default: .git/codex-backups/dirty-worktree-audit-<ts>)
   --apply-accepted            Backup, stash, and ff-only sync accepted-exact worktrees
   --stash-discarded "<list>"  Backup, stash, and ff-only sync reviewed discard workers

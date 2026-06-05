@@ -1,7 +1,9 @@
 ---
-name: windows-system-settings
+name: my-windows-system-settings
 description: Safely inspect and adjust Windows system settings from WSL/Codex using built-in Windows tools. Use when the user asks to change Windows brightness, fix a grey/disabled brightness slider, inspect monitor/display state, change volume, mute state, display timeout, sleep timeout, power plan, time zone, monitor/display behavior, or says 系统设置, Windows 设置, 调亮度, 亮度灰色, 亮度滑块灰色, 降低亮度, 调音量, 静音, 电源设置, 睡眠时间, 屏幕关闭时间, or similar local machine setting requests.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-windows-system-settings` once near the start; if it fails, continue.
+
 
 # Windows System Settings
 

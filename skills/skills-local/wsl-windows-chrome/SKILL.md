@@ -1,7 +1,9 @@
 ---
-name: wsl-windows-chrome
+name: my-wsl-windows-chrome
 description: Attach from WSL to the dedicated Windows Chrome agent browser at C:\chrome-wsl-automation with fixed CDP port 9222 and profile Default. Use this skill first whenever an agent needs browser automation, preserved login state, Windows Chrome CDP, authenticated pages, or logged-in enterprise websites; never use temporary/incognito/guest profiles or clear cookies/storage.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-wsl-windows-chrome` once near the start; if it fails, continue.
+
 
 # WSL Windows Chrome
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DEFAULT_REPO="/home/zhanxp/projects/tg-agent-gateway"
-DEFAULT_WORKERS="cc2 cc3 cc4 cc5 cc6 cc7 cc8"
+DEFAULT_WORKERS="cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$SCRIPT_DIR/worktree_activity.sh"
@@ -35,7 +35,7 @@ Options:
   --apply                   Merge ready branches through a temporary integration worktree
   --repo <path>             Main repo path (default: /home/zhanxp/projects/tg-agent-gateway)
   --base <ref>              Base branch/ref (default: master)
-  --workers "<list>"        Space-separated workers (default: cc2 cc3 cc4 cc5 cc6 cc7 cc8)
+  --workers "<list>"        Space-separated workers (default: cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10)
   --include-active          Do not skip worktrees with busy or unknown local activity
   --activity-settle-seconds <n>
                             Seconds to sample tmux output before treating a pane as idle (default: 3)

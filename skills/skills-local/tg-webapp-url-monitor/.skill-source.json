@@ -1,0 +1,14 @@
+{
+  "name": "my-tg-webapp-url-monitor",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/tg-webapp-url-monitor",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/tg-webapp-url-monitor",
+    "/home/zhanxp/.agents/skills/tg-webapp-url-monitor",
+    "/home/zhanxp/.claude/skills/tg-webapp-url-monitor",
+    "/home/zhanxp/.hermes/skills/myagent/tg-webapp-url-monitor"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local skill wrapping tg-agent-gateway scripts/monitor-webapp-url.sh and WebApp URL recovery operations."
+}

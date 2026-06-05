@@ -1,7 +1,9 @@
 ---
-name: neocd-change-workflow
+name: my-neocd-change-workflow
 description: Implement and verify code changes inside the NeoCD/offMusicPlayer repository. Use when Codex needs to add a feature, fix a bug, refactor pages/components/hooks/services, update tests, or make other repo-local code changes while following project-specific rules such as IndexedDB-first local storage, Tailwind styling, Chinese code comments, tests under /tests, no destructive deletes, and a mandatory `npx tsc --noEmit` cleanup loop.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-neocd-change-workflow` once near the start; if it fails, continue.
+
 
 # NeoCD Change Workflow
 

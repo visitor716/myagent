@@ -1,7 +1,9 @@
 ---
-name: cc-connect-bot-setup
+name: my-cc-connect-bot-setup
 description: Configure and diagnose cc-connect Telegram bot bridges and Claude Code permission defaults, especially per-bot Claude Code/Codex modes, global Claude Code startup bypassPermissions, full-auto defaults, WSL/systemd startup fallback, config backups, and safe restarts. Use when the user mentions cc-connect, Telegram bot bridge permissions, Claude/Cloud Code permission boundaries, bypassPermissions, full-auto/suggest/plan/yolo modes, or restarting cc-connect.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-cc-connect-bot-setup` once near the start; if it fails, continue.
+
 
 # cc-connect Bot Setup
 

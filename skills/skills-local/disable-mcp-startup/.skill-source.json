@@ -1,5 +1,5 @@
 {
-  "name": "disable-mcp-startup",
+  "name": "my-disable-mcp-startup",
   "owner": "zhanxp",
   "managed_by": "manual-git",
   "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/disable-mcp-startup",

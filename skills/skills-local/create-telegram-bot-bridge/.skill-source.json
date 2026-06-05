@@ -1,5 +1,5 @@
 {
-  "name": "create-telegram-bot-bridge",
+  "name": "my-create-telegram-bot-bridge",
   "owner": "zhanxp",
   "managed_by": "manual-git",
   "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/create-telegram-bot-bridge",

@@ -1,7 +1,9 @@
 ---
-name: windows-document-organizer
+name: my-windows-document-organizer
 description: Safely organize Windows-mounted document folders from WSL with dry-run inventories, exact duplicate detection, content-assisted classification, reviewed move plans, traceable indexes, and non-destructive file moves. Use when the user asks to 整理资料, 整理目录, classify a D:\ or /mnt drive work folder, deduplicate documents, preserve existing curated subtrees, generate 00_资料索引 logs, or clean up mixed Office/PDF/image/project files without deleting originals.
 ---
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-windows-document-organizer` once near the start; if it fails, continue.
+
 
 # Windows Document Organizer
 
