@@ -1,10 +1,10 @@
 ---
-name: my-codex-workfolws
+name: my-workflows
 description: Use when tg-agent-gateway delivery should follow cx1 plan -> cx2 orchestrate -> worker execute -> observer report -> cx2 review -> master integrate/push, or when the user wants a Codex plan handed to Claude workers with observer coverage and a cx2 review gate. Triggers include "安排 cc", "安排cc", "把计划交给 Claude 做", "Claude 做完你 review", "Codex 规划 Claude 执行 Codex 检查", "plan to Claude execute to Codex review", and similar handoff/review workflows.
 metadata:
   short-description: cx1 plan, cx2 orchestrate/review, workers execute, master integrates
 ---
-> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-codex-workfolws` once near the start; if it fails, continue.
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-workflows` once near the start; if it fails, continue.
 
 
 # cx1 Plan -> cx2 Orchestrate -> Worker Execute -> Observer Report -> cx2 Review -> Master Integrate
@@ -404,14 +404,28 @@ Default scan order:
 cx3 cx4 cx5
 ```
 
+Additional CX workers:
+
+- `cx3`-`cx5` remain the default one-shot repair scan order.
+- When creating more CX workers such as `cx6`, `cx7`, or later lanes, keep the
+  same worktree pattern: `/home/zhanxp/worktrees/tg-agent-gateway/<cxN>`.
+- Start every new CX worker through `launch_codex_worker_terminal.sh`; do not
+  create custom launch snippets that bypass app-server preflight, WSL proxy
+  injection, model defaults, or the live TUI check.
+- Default CX worker runtime is
+  `model=${OMX_DEFAULT_CX_MODEL:-gpt-5.3-codex-spark}` and
+  `reasoning_effort=${OMX_DEFAULT_CX_REASONING_EFFORT:-xhigh}`.
+- If a CX worker opens but stays on `Working` or `Reconnecting`, first inspect
+  proxy propagation inside the worker process before changing model policy.
+
 Selection rules:
 
 - Choose the first worker that is clean, idle, and not blocked by existing `tmux` worker session.
 - If the user names a specific `cxN`, use that worker only if it is clean, idle, and can be started in a long-lived visible Codex terminal; otherwise report it unavailable instead of falling back to headless execution.
 - Never run multiple repair workers in parallel.
 - Keep the repaired worker command consistent:
-  - `model`: `gpt-5.3-codex-spark`
-  - `model_reasoning_effort`: `xhigh`
+  - `model`: `${OMX_DEFAULT_CX_MODEL:-gpt-5.3-codex-spark}`
+  - `model_reasoning_effort`: `${OMX_DEFAULT_CX_REASONING_EFFORT:-xhigh}`
 
 Repair worker launch pattern (visible by default):
 
@@ -421,8 +435,8 @@ Repair worker launch pattern (visible by default):
   --task-slug <cxN>-<task-slug>-repair \
   --prompt-file /home/zhanxp/projects/tg-agent-gateway/.omx/claude-handoffs/<cxN>-<task-slug>-repair.md \
   --title <cxN> \
-  --model gpt-5.3-codex-spark \
-  --reasoning-effort xhigh
+  --model "${OMX_DEFAULT_CX_MODEL:-gpt-5.3-codex-spark}" \
+  --reasoning-effort "${OMX_DEFAULT_CX_REASONING_EFFORT:-xhigh}"
 ```
 
 After launch, verify the pane:
@@ -458,7 +472,7 @@ If all candidates are unavailable or fail, report blocked rather than creating e
   --prompt-file /home/zhanxp/projects/tg-agent-gateway/.omx/claude-handoffs/cx2-<task-slug>-review.md \
   --title cx2 \
   --model gpt-5.5 \
-  --reasoning-effort xhigh
+  --reasoning-effort "${OMX_DEFAULT_CX_REASONING_EFFORT:-xhigh}"
 ```
 
 - If review fails, route to next available repair worker (`cx3/cx4/cx5` order), then stop and report if no additional worker remains.

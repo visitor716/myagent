@@ -8,12 +8,13 @@ TASK_SLUG=""
 PROMPT_FILE=""
 WORKER_TITLE=""
 CODEX_BIN=""
-MODEL="gpt-5.3-codex-spark"
-REASONING_EFFORT="xhigh"
+MODEL="${OMX_DEFAULT_CX_MODEL:-gpt-5.3-codex-spark}"
+REASONING_EFFORT="${OMX_DEFAULT_CX_REASONING_EFFORT:-xhigh}"
 DRY_RUN=0
 VERBOSE=0
 TERMINAL_MODE="tab"
 EXEC_MODE=0
+APP_SERVER_PREFLIGHT=1
 
 usage() {
   cat <<'EOF_USAGE'
@@ -29,6 +30,7 @@ Options:
   --reasoning-effort <effort>    Optional. model_reasoning_effort value (default: xhigh).
   --exec                         Run headless `codex exec` instead of interactive Codex CLI.
   --interactive                  Run interactive Codex CLI. Default.
+  --no-app-server-preflight       Do not check/restart Codex app-server before launch.
   --dry-run                     Print commands without executing or writing launch files.
   --verbose                     Print verbose output.
   --terminal-mode <tab|window>  Optional. Default: tab.
@@ -101,6 +103,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --interactive)
       EXEC_MODE=0
+      shift
+      ;;
+    --no-app-server-preflight)
+      APP_SERVER_PREFLIGHT=0
       shift
       ;;
     --dry-run)
@@ -186,6 +192,7 @@ vlog "Session: $TMUX_SESSION"
 vlog "Terminal mode: $TERMINAL_MODE"
 vlog "Dry run: $DRY_RUN"
 vlog "Exec mode: $EXEC_MODE"
+vlog "App-server preflight: $APP_SERVER_PREFLIGHT"
 vlog "Command: $CODEX_CMD_LINE"
 vlog "CX worker name: $CX_WORKER_NAME"
 vlog "TG gateway cx guard: $TG_GATEWAY_CX_GUARD"
@@ -201,8 +208,76 @@ PROMPT_FILE=$(printf '%q' "$PROMPT_FILE")
 CODEX_BIN=$(printf '%q' "$CODEX_BIN")
 MODEL=$(printf '%q' "$MODEL")
 REASONING_EFFORT=$(printf '%q' "$REASONING_EFFORT")
+APP_SERVER_PREFLIGHT=$(printf '%q' "$APP_SERVER_PREFLIGHT")
 
 cd "\$WORKTREE"
+
+run_maybe_timeout() {
+  local duration="\$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "\$duration" "\$@"
+  else
+    "\$@"
+  fi
+}
+
+restart_codex_app_server() {
+  local reason="\$1"
+  printf '[WARN] Codex app-server preflight failed: %s\n' "\$reason" >&2
+  printf '[WARN] Restarting managed Codex app-server before launching worker...\n' >&2
+  run_maybe_timeout 20s "\$CODEX_BIN" app-server daemon restart >&2
+}
+
+preflight_codex_app_server() {
+  if [[ "\$APP_SERVER_PREFLIGHT" != "1" ]]; then
+    return 0
+  fi
+
+  local version_output=""
+  if ! version_output="\$(run_maybe_timeout 10s "\$CODEX_BIN" app-server daemon version 2>&1)"; then
+    restart_codex_app_server "\$version_output"
+    return 0
+  fi
+
+  local cli_version=""
+  local app_server_version=""
+  cli_version="\$(printf '%s' "\$version_output" | sed -n 's/.*"cliVersion":"\([^"]*\)".*/\1/p')"
+  app_server_version="\$(printf '%s' "\$version_output" | sed -n 's/.*"appServerVersion":"\([^"]*\)".*/\1/p')"
+  if [[ -n "\$cli_version" && -n "\$app_server_version" && "\$cli_version" != "\$app_server_version" ]]; then
+    restart_codex_app_server "cliVersion=\$cli_version appServerVersion=\$app_server_version"
+  fi
+}
+
+load_wsl_proxy_env() {
+  if [[ -n "\${https_proxy:-}" || -n "\${HTTPS_PROXY:-}" ]]; then
+    return 0
+  fi
+
+  local proxy_port_file="\${WSL_PROXY_PORT_FILE:-\$HOME/.wsl-proxy.port}"
+  local proxy_host="\${WIN_PROXY_HOST:-127.0.0.1}"
+  local proxy_port="\${WIN_PROXY_PORT:-}"
+  if [[ -z "\$proxy_port" && -f "\$proxy_port_file" ]]; then
+    proxy_port="\$(awk 'NF {print \$1; exit}' "\$proxy_port_file" 2>/dev/null || true)"
+  fi
+  proxy_port="\${proxy_port:-\${WSL_PROXY_DEFAULT_PORT:-4062}}"
+
+  export WIN_PROXY_HOST="\$proxy_host"
+  export WIN_PROXY_PORT="\$proxy_port"
+  export http_proxy="http://\$WIN_PROXY_HOST:\$WIN_PROXY_PORT"
+  export https_proxy="\$http_proxy"
+  export HTTP_PROXY="\$http_proxy"
+  export HTTPS_PROXY="\$http_proxy"
+  unset ALL_PROXY
+  unset all_proxy
+
+  local default_no_proxy="localhost,127.0.0.1,::1,.local,*.local,host.docker.internal,gateway.docker.internal,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16"
+  export NO_PROXY="\${NO_PROXY:-\$default_no_proxy}"
+  export no_proxy="\${no_proxy:-\$NO_PROXY}"
+}
+
+load_wsl_proxy_env
+preflight_codex_app_server
 PROMPT_TEXT="\$(cat "\$PROMPT_FILE")"
 exec "\$CODEX_BIN" --dangerously-bypass-approvals-and-sandbox -C "\$WORKTREE" -m "\$MODEL" -c "model_reasoning_effort=\"\$REASONING_EFFORT\"" "\$PROMPT_TEXT"
 EOF_RUNNER
@@ -248,11 +323,13 @@ verify_interactive_tmux_launch() {
 
   local current_command=""
   local current_path=""
+  local pane_text=""
   for _ in {1..80}; do
     if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
       current_command="$(tmux display-message -p -t "$TMUX_SESSION:0.0" '#{pane_current_command}' 2>/dev/null || true)"
       current_path="$(tmux display-message -p -t "$TMUX_SESSION:0.0" '#{pane_current_path}' 2>/dev/null || true)"
-      if [[ "$current_command" == "codex" ]]; then
+      pane_text="$(tmux capture-pane -pt "$TMUX_SESSION:0.0" -S -80 2>/dev/null || true)"
+      if [[ "$current_command" == "codex" && "$pane_text" == *"OpenAI Codex"* ]]; then
         log "Verified live Codex pane: session=$TMUX_SESSION command=$current_command path=$current_path"
         return 0
       fi
@@ -280,6 +357,7 @@ REASONING_EFFORT='$REASONING_EFFORT'
 MODEL='$MODEL'
 EXEC_MODE='$EXEC_MODE'
 CODEX_BIN='$CODEX_BIN'
+APP_SERVER_PREFLIGHT='$APP_SERVER_PREFLIGHT'
 
 cd "$WORKTREE"
 printf '\\033]0;%s\\007' "$WORKER_TITLE"
