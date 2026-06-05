@@ -4,9 +4,9 @@ set -euo pipefail
 
 # 配置
 MY_AGENTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPTS_DIR="${MY_AGENTS_DIR}/scripts"
-TG_GATEWAY_DIR="/home/zhanxp/projects/tg-agent-gateway"
-TG_GATEWAY_WORKTREES="/home/zhanxp/worktrees/tg-agent-gateway"
+SCRIPTS_DIR="${MY_WORKFLOWS_SCRIPTS_DIR:-${MY_AGENTS_DIR}/scripts}"
+TG_GATEWAY_DIR="${MY_WORKFLOWS_TG_GATEWAY_DIR:-/home/zhanxp/projects/tg-agent-gateway}"
+TG_GATEWAY_WORKTREES="${MY_WORKFLOWS_TG_GATEWAY_WORKTREES:-/home/zhanxp/worktrees/tg-agent-gateway}"
 
 # 状态文件目录
 STATE_DIR=""
@@ -14,6 +14,7 @@ OMX_DIR=""
 CLAUDE_HANDOFFS_DIR=""
 LAUNCHERS_DIR=""
 OBSERVERS_DIR=""
+INTEGRATION_CANDIDATES_DIR=""
 
 # 默认值
 DEFAULT_CC_WORKERS=("cc3" "cc4" "cc5" "cc6" "cc7" "cc8" "cc9" "cc10")
@@ -30,6 +31,8 @@ SELECTED_CX_REVIEW_WORKER=""
 HAS_OBSERVER=0
 DRY_RUN=0
 VERBOSE=0
+INPUT_PROMPT_FILE=""
+IGNORE_RUNTIME_BUSY="${MY_WORKFLOWS_IGNORE_RUNTIME_BUSY:-0}"
 
 usage() {
   cat <<'EOF_USAGE'
@@ -59,16 +62,16 @@ EOF_USAGE
 }
 
 log() {
-  printf '[\033[32m*\033[0m] %s\n' "$*"
+  printf '[\033[32m*\033[0m] %s\n' "$*" >&2
 }
 
 log_phase() {
-  printf '\n\033[1;34m=== %s ===\033[0m\n\n' "$*"
+  printf '\n\033[1;34m=== %s ===\033[0m\n\n' "$*" >&2
 }
 
 vlog() {
   if [[ "${VERBOSE:-0}" -eq 1 ]]; then
-    printf '[\033[36m.\033[0m] %s\n' "$*"
+    printf '[\033[36m.\033[0m] %s\n' "$*" >&2
   fi
 }
 
@@ -89,12 +92,84 @@ init_directories() {
   CLAUDE_HANDOFFS_DIR="${OMX_DIR}/claude-handoffs"
   LAUNCHERS_DIR="${OMX_DIR}/codex-launchers"
   OBSERVERS_DIR="${OMX_DIR}/observers"
+  INTEGRATION_CANDIDATES_DIR="${OMX_DIR}/integration-candidates"
 
-  for dir in "${OMX_DIR}" "${CLAUDE_HANDOFFS_DIR}" "${LAUNCHERS_DIR}" "${OBSERVERS_DIR}"; do
+  for dir in "${OMX_DIR}" "${CLAUDE_HANDOFFS_DIR}" "${LAUNCHERS_DIR}" "${OBSERVERS_DIR}" "${INTEGRATION_CANDIDATES_DIR}"; do
     if [[ ! -d "${dir}" ]]; then
       mkdir -p "${dir}"
     fi
   done
+}
+
+array_contains() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    [[ "${item}" == "${needle}" ]] && return 0
+  done
+  return 1
+}
+
+is_cc_worker_name() {
+  [[ "$1" =~ ^cc[0-9]+$ ]]
+}
+
+is_cx_worker_name() {
+  [[ "$1" =~ ^cx[0-9]+$ ]]
+}
+
+is_cx_repair_worker_name() {
+  array_contains "$1" "${DEFAULT_CX_REPAIR_WORKERS[@]}"
+}
+
+validate_requested_cc_worker() {
+  local requested_worker="$1"
+  [[ -z "${requested_worker}" ]] && return 0
+  is_cc_worker_name "${requested_worker}" || die "Requested worker must be a cc worker: ${requested_worker}"
+}
+
+validate_requested_cx_repair_worker() {
+  local requested_worker="$1"
+  [[ -z "${requested_worker}" ]] && return 0
+  is_cx_worker_name "${requested_worker}" || die "Requested worker must be a cx worker: ${requested_worker}"
+  is_cx_repair_worker_name "${requested_worker}" || die "Requested CX repair worker must be one of: ${DEFAULT_CX_REPAIR_WORKERS[*]}"
+}
+
+validate_requested_cx_review_worker() {
+  local requested_worker="$1"
+  [[ -z "${requested_worker}" ]] && return 0
+  is_cx_worker_name "${requested_worker}" || die "Requested review worker must be a cx worker: ${requested_worker}"
+  [[ "${requested_worker}" == "${DEFAULT_CX_REVIEW_WORKER}" ]] || die "Review worker is fixed to ${DEFAULT_CX_REVIEW_WORKER}"
+}
+
+require_task_slug() {
+  local phase="$1"
+  local task_slug="${CURRENT_TASK:-}"
+  [[ -n "${task_slug}" ]] || die "--task is required for ${phase}"
+  [[ "${task_slug}" =~ ^[A-Za-z0-9._-]+$ ]] || die "--task must contain only letters, numbers, '.', '_' or '-'"
+  printf '%s\n' "${task_slug}"
+}
+
+require_prompt_file() {
+  local phase="$1"
+  [[ -n "${INPUT_PROMPT_FILE:-}" ]] || die "--prompt-file is required for ${phase}"
+  [[ -f "${INPUT_PROMPT_FILE}" ]] || die "Prompt file not found: ${INPUT_PROMPT_FILE}"
+  printf '%s\n' "${INPUT_PROMPT_FILE}"
+}
+
+write_prompt_file() {
+  local prompt_file="$1"
+  local prompt_content="$2"
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "DRY-RUN: Would write handoff prompt to ${prompt_file}"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "${prompt_file}")"
+  printf '%s\n' "${prompt_content}" > "${prompt_file}"
+  log "Wrote handoff prompt: ${prompt_file}"
 }
 
 is_git_worktree_clean() {
@@ -103,16 +178,22 @@ is_git_worktree_clean() {
     return 1
   fi
   local status
-  status="$(git -C "${worktree}" status --short)"
+  status="$(git -C "${worktree}" status --short 2>/dev/null)" || return 1
   [[ -z "${status}" ]]
 }
 
 has_tmux_session() {
+  if [[ "${IGNORE_RUNTIME_BUSY}" == "1" ]]; then
+    return 1
+  fi
   local pattern="$1"
   tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -q "${pattern}"
 }
 
 has_active_db_task() {
+  if [[ "${IGNORE_RUNTIME_BUSY}" == "1" ]]; then
+    return 1
+  fi
   local worker="$1"
   local db_path="${TG_GATEWAY_DIR}/data/gateway.sqlite"
   if [[ ! -f "${db_path}" ]]; then
@@ -126,6 +207,11 @@ has_active_db_task() {
 is_cc_worker_available() {
   local worker="$1"
   local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
+
+  if ! is_cc_worker_name "${worker}"; then
+    vlog "Worker ${worker} is not a cc worker"
+    return 1
+  fi
 
   if [[ ! -d "${worktree}" ]]; then
     vlog "Worker ${worker} missing worktree: ${worktree}"
@@ -154,6 +240,11 @@ is_cx_worker_available() {
   local worker="$1"
   local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
 
+  if ! is_cx_worker_name "${worker}"; then
+    vlog "Worker ${worker} is not a cx worker"
+    return 1
+  fi
+
   if [[ ! -d "${worktree}" ]]; then
     vlog "CX Worker ${worker} missing worktree: ${worktree}"
     return 1
@@ -175,6 +266,9 @@ is_cx_worker_available() {
 select_available_cc_worker() {
   local requested_worker="${1:-}"
   if [[ -n "${requested_worker}" ]]; then
+    if ! is_cc_worker_name "${requested_worker}"; then
+      die "Requested worker must be a cc worker: ${requested_worker}"
+    fi
     if is_cc_worker_available "${requested_worker}"; then
       printf '%s\n' "${requested_worker}"
       return 0
@@ -197,6 +291,12 @@ select_available_cc_worker() {
 select_available_cx_repair_worker() {
   local requested_worker="${1:-}"
   if [[ -n "${requested_worker}" ]]; then
+    if ! is_cx_worker_name "${requested_worker}"; then
+      die "Requested worker must be a cx worker: ${requested_worker}"
+    fi
+    if ! is_cx_repair_worker_name "${requested_worker}"; then
+      die "Requested CX repair worker must be one of: ${DEFAULT_CX_REPAIR_WORKERS[*]}"
+    fi
     if is_cx_worker_available "${requested_worker}"; then
       printf '%s\n' "${requested_worker}"
       return 0
@@ -213,6 +313,25 @@ select_available_cx_repair_worker() {
     fi
   done
 
+  return 1
+}
+
+select_available_cx_review_worker() {
+  local requested_worker="${1:-${DEFAULT_CX_REVIEW_WORKER}}"
+  if [[ -z "${requested_worker}" ]]; then
+    requested_worker="${DEFAULT_CX_REVIEW_WORKER}"
+  fi
+  if ! is_cx_worker_name "${requested_worker}"; then
+    die "Requested review worker must be a cx worker: ${requested_worker}"
+  fi
+  if [[ "${requested_worker}" != "${DEFAULT_CX_REVIEW_WORKER}" ]]; then
+    die "Review worker is fixed to ${DEFAULT_CX_REVIEW_WORKER}"
+  fi
+  if is_cx_worker_available "${requested_worker}"; then
+    printf '%s\n' "${requested_worker}"
+    return 0
+  fi
+  warn "Review worker ${requested_worker} is not available"
   return 1
 }
 
@@ -233,15 +352,134 @@ write_handoff_prompt() {
   local prompt_content="$2"
   local prompt_file="${CLAUDE_HANDOFFS_DIR}/${task_slug}.md"
 
-  if [[ "${DRY_RUN}" -eq 1 ]]; then
-    log "DRY-RUN: Would write handoff prompt to ${prompt_file}"
-    printf '%s\n' "${prompt_content}"
-  else
-    printf '%s\n' "${prompt_content}" > "${prompt_file}"
-    log "Wrote handoff prompt: ${prompt_file}"
-  fi
-
+  write_prompt_file "${prompt_file}" "${prompt_content}"
   printf '%s\n' "${prompt_file}"
+}
+
+render_cc_handoff_prompt() {
+  local task_slug="$1"
+  local worker="$2"
+  local source_prompt_file="$3"
+  local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
+
+  cat <<EOF
+# Claude Worker Handoff
+
+Task: ${task_slug}
+Worker: ${worker}
+Worktree: ${worktree}
+Source prompt: ${source_prompt_file}
+
+## Execution Contract
+
+- Work only inside ${worktree}.
+- Do not edit master or unrelated worktrees.
+- Keep the diff within the requested scope.
+- Run the verification commands requested in the source prompt.
+- Report changed files, verification evidence, blockers, and residual risk.
+
+## Source Prompt
+
+$(cat "${source_prompt_file}")
+EOF
+}
+
+render_observer_prompt() {
+  local task_slug="$1"
+  local observer="$2"
+  local implementation_worker="$3"
+  local source_prompt_file="$4"
+
+  cat <<EOF
+# Read-Only Observer Handoff
+
+Task: ${task_slug}
+Observer: ${observer}
+Implementation worker: ${implementation_worker}
+Implementation worktree: ${TG_GATEWAY_WORKTREES}/${implementation_worker}
+Source prompt: ${source_prompt_file}
+
+Observe the implementation worker without editing files. Report execution
+status, diff summary, verification evidence, stalls, blockers, and final result
+path back to cx2.
+
+## Source Prompt
+
+$(cat "${source_prompt_file}")
+EOF
+}
+
+render_cx_repair_prompt() {
+  local task_slug="$1"
+  local worker="$2"
+  local source_prompt_file="$3"
+  local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
+
+  cat <<EOF
+# Codex Repair Handoff
+
+Task: ${task_slug}
+Repair worker: ${worker}
+Worktree: ${worktree}
+Source prompt: ${source_prompt_file}
+
+## Repair Contract
+
+- Work only inside ${worktree}.
+- Repair the final candidate described in the source prompt.
+- Do not change command semantics, callbacks, data contracts, permissions, or
+  unrelated files unless the source prompt explicitly requires it.
+- Run the requested verification and report evidence.
+
+## Source Prompt
+
+$(cat "${source_prompt_file}")
+EOF
+}
+
+render_cx_review_prompt() {
+  local task_slug="$1"
+  local worker="$2"
+  local source_prompt_file="$3"
+  local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
+
+  cat <<EOF
+# cx2 Review Handoff
+
+Task: ${task_slug}
+Review worker: ${worker}
+Worktree: ${worktree}
+Source prompt: ${source_prompt_file}
+
+Review the completed worker diff read-only against the plan and verification
+evidence. Output pass/fail, blocking findings with file references, verification
+evidence, residual risks, and the recommended master integration candidate.
+Do not implement, merge, commit, or push.
+
+## Source Prompt
+
+$(cat "${source_prompt_file}")
+EOF
+}
+
+render_integration_candidate() {
+  local task_slug="$1"
+  local source_prompt_file="$2"
+
+  cat <<EOF
+# Master Integration Candidate
+
+Task: ${task_slug}
+Source prompt: ${source_prompt_file}
+
+This file records the cx2-approved integration input for master. Apply only the
+review-passed candidate described below, run final verification, refresh runtime
+when applicable, and push only when the workflow or user explicitly requests it.
+
+## Source Prompt
+
+$(cat "${source_prompt_file}")
+EOF
 }
 
 launch_cc_worker() {
@@ -249,13 +487,17 @@ launch_cc_worker() {
   local task_slug="$2"
   local prompt_file="$3"
   local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
+  local launcher_task_slug="${worker}-${task_slug}"
+  local launcher="${SCRIPTS_DIR}/launch_claude_worker_terminal.sh"
 
   log "Launching Claude worker ${worker} for task ${task_slug}"
 
+  [[ -f "${launcher}" ]] || die "Claude launcher not found: ${launcher}"
+
   local launcher_cmd=(
-    "${SCRIPTS_DIR}/launch_claude_worker_terminal.sh"
+    "${launcher}"
     --worktree "${worktree}"
-    --task-slug "${task_slug}"
+    --task-slug "${launcher_task_slug}"
     --prompt-file "${prompt_file}"
     --title "${worker}"
   )
@@ -270,7 +512,12 @@ launch_cc_worker() {
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     log "DRY-RUN: Would execute:"
-    printf '  %q ' "${launcher_cmd[@]}"
+    printf '  '
+    printf '%q' "${launcher_cmd[0]}"
+    local arg
+    for arg in "${launcher_cmd[@]:1}"; do
+      printf ' %q' "${arg}"
+    done
     printf '\n'
   else
     "${launcher_cmd[@]}"
@@ -284,13 +531,17 @@ launch_cx_worker() {
   local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
   local model="${4:-${OMX_DEFAULT_CX_MODEL:-gpt-5.3-codex-spark}}"
   local reasoning_effort="${5:-${OMX_DEFAULT_CX_REASONING_EFFORT:-xhigh}}"
+  local launcher_task_slug="${worker}-${task_slug}"
+  local launcher="${SCRIPTS_DIR}/launch_codex_worker_terminal.sh"
 
   log "Launching Codex worker ${worker} for task ${task_slug}"
 
+  [[ -f "${launcher}" ]] || die "Codex launcher not found: ${launcher}"
+
   local launcher_cmd=(
-    "${SCRIPTS_DIR}/launch_codex_worker_terminal.sh"
+    "${launcher}"
     --worktree "${worktree}"
-    --task-slug "${task_slug}"
+    --task-slug "${launcher_task_slug}"
     --prompt-file "${prompt_file}"
     --title "${worker}"
     --model "${model}"
@@ -307,7 +558,12 @@ launch_cx_worker() {
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     log "DRY-RUN: Would execute:"
-    printf '  %q ' "${launcher_cmd[@]}"
+    printf '  '
+    printf '%q' "${launcher_cmd[0]}"
+    local arg
+    for arg in "${launcher_cmd[@]:1}"; do
+      printf ' %q' "${arg}"
+    done
     printf '\n'
   else
     "${launcher_cmd[@]}"
@@ -318,6 +574,7 @@ cmd_select_cc_worker() {
   log_phase "选择 CC Worker"
 
   local requested_worker="${1:-}"
+  validate_requested_cc_worker "${requested_worker}"
   local worker
 
   worker="$(select_available_cc_worker "${requested_worker}")" || {
@@ -332,6 +589,7 @@ cmd_select_cx_worker() {
   log_phase "选择 CX Repair Worker"
 
   local requested_worker="${1:-}"
+  validate_requested_cx_repair_worker "${requested_worker}"
   local worker
 
   worker="$(select_available_cx_repair_worker "${requested_worker}")" || {
@@ -344,18 +602,20 @@ cmd_select_cx_worker() {
 
 cmd_plan() {
   log_phase "CX1 规划模式"
-  log "This is the planning phase. Use Codex cx1 for planning tasks."
-  log "TODO: Implement cx1 planning orchestration"
+  local task_slug
+  task_slug="$(require_task_slug "plan")"
+  log "Planning phase for ${task_slug}: keep cx1 plan-only and write the decision-complete handoff prompt before orchestrate."
 }
 
 cmd_orchestrate() {
   log_phase "CX2 编排模式"
 
-  local task_slug="${CURRENT_TASK:-}"
-  if [[ -z "${task_slug}" ]]; then
-    die "--task is required for orchestrate"
-  fi
+  local task_slug
+  task_slug="$(require_task_slug "orchestrate")"
+  local source_prompt_file
+  source_prompt_file="$(require_prompt_file "orchestrate")"
 
+  validate_requested_cc_worker "${SELECTED_CC_WORKER:-}"
   local worker
   worker="$(select_available_cc_worker "${SELECTED_CC_WORKER:-}")" || {
     die "No available CC worker for orchestration"
@@ -363,11 +623,22 @@ cmd_orchestrate() {
   SELECTED_CC_WORKER="${worker}"
   log "Selected CC worker: ${SELECTED_CC_WORKER}"
 
+  local handoff_file="${CLAUDE_HANDOFFS_DIR}/${SELECTED_CC_WORKER}-${task_slug}.md"
+  local handoff_prompt
+  handoff_prompt="$(render_cc_handoff_prompt "${task_slug}" "${SELECTED_CC_WORKER}" "${source_prompt_file}")"
+  write_prompt_file "${handoff_file}" "${handoff_prompt}"
+  launch_cc_worker "${SELECTED_CC_WORKER}" "${task_slug}" "${handoff_file}"
+
   local observer_worker=""
   if is_observer_available; then
     observer_worker="${DEFAULT_OBSERVER_WORKER}"
     HAS_OBSERVER=1
     log "Observer worker available: ${observer_worker}"
+    local observer_prompt_file="${OBSERVERS_DIR}/${observer_worker}-${task_slug}-observer.md"
+    local observer_prompt
+    observer_prompt="$(render_observer_prompt "${task_slug}" "${observer_worker}" "${SELECTED_CC_WORKER}" "${source_prompt_file}")"
+    write_prompt_file "${observer_prompt_file}" "${observer_prompt}"
+    launch_cc_worker "${observer_worker}" "${task_slug}-observer" "${observer_prompt_file}"
   else
     warn "Observer worker ${DEFAULT_OBSERVER_WORKER} not available"
   fi
@@ -383,11 +654,12 @@ cmd_orchestrate() {
 cmd_repair() {
   log_phase "CX Repair 模式"
 
-  local task_slug="${CURRENT_TASK:-}"
-  if [[ -z "${task_slug}" ]]; then
-    die "--task is required for repair"
-  fi
+  local task_slug
+  task_slug="$(require_task_slug "repair")"
+  local source_prompt_file
+  source_prompt_file="$(require_prompt_file "repair")"
 
+  validate_requested_cx_repair_worker "${SELECTED_CX_REPAIR_WORKER:-}"
   local worker
   worker="$(select_available_cx_repair_worker "${SELECTED_CX_REPAIR_WORKER:-}")" || {
     die "No available CX repair worker"
@@ -395,19 +667,55 @@ cmd_repair() {
   SELECTED_CX_REPAIR_WORKER="${worker}"
   log "Selected CX repair worker: ${SELECTED_CX_REPAIR_WORKER}"
 
-  log "Repair mode ready for task ${task_slug}"
+  local handoff_file="${CLAUDE_HANDOFFS_DIR}/${SELECTED_CX_REPAIR_WORKER}-${task_slug}-repair.md"
+  local handoff_prompt
+  handoff_prompt="$(render_cx_repair_prompt "${task_slug}" "${SELECTED_CX_REPAIR_WORKER}" "${source_prompt_file}")"
+  write_prompt_file "${handoff_file}" "${handoff_prompt}"
+  launch_cx_worker "${SELECTED_CX_REPAIR_WORKER}" "${task_slug}-repair" "${handoff_file}"
+
+  log "Repair launched for task ${task_slug}"
 }
 
 cmd_review() {
   log_phase "CX2 Review 模式"
-  log "Review phase: cx2 reviews worker results"
-  log "TODO: Implement cx2 review orchestration"
+
+  local task_slug
+  task_slug="$(require_task_slug "review")"
+  local source_prompt_file
+  source_prompt_file="$(require_prompt_file "review")"
+
+  validate_requested_cx_review_worker "${SELECTED_CX_REVIEW_WORKER:-}"
+  local worker
+  worker="$(select_available_cx_review_worker "${SELECTED_CX_REVIEW_WORKER:-}")" || {
+    die "No available CX review worker"
+  }
+  SELECTED_CX_REVIEW_WORKER="${worker}"
+  log "Selected CX review worker: ${SELECTED_CX_REVIEW_WORKER}"
+
+  local handoff_file="${CLAUDE_HANDOFFS_DIR}/${SELECTED_CX_REVIEW_WORKER}-${task_slug}-review.md"
+  local handoff_prompt
+  handoff_prompt="$(render_cx_review_prompt "${task_slug}" "${SELECTED_CX_REVIEW_WORKER}" "${source_prompt_file}")"
+  write_prompt_file "${handoff_file}" "${handoff_prompt}"
+  launch_cx_worker "${SELECTED_CX_REVIEW_WORKER}" "${task_slug}-review" "${handoff_file}"
+
+  log "Review launched for task ${task_slug}"
 }
 
 cmd_integrate() {
   log_phase "Master 集成模式"
-  log "Integration phase: apply accepted changes to master"
-  log "TODO: Implement master integration orchestration"
+
+  local task_slug
+  task_slug="$(require_task_slug "integrate")"
+  local source_prompt_file
+  source_prompt_file="$(require_prompt_file "integrate")"
+
+  local candidate_file="${INTEGRATION_CANDIDATES_DIR}/${task_slug}.md"
+  local candidate_prompt
+  candidate_prompt="$(render_integration_candidate "${task_slug}" "${source_prompt_file}")"
+  write_prompt_file "${candidate_file}" "${candidate_prompt}"
+
+  log "Integration candidate ready: ${candidate_file}"
+  printf '%s\n' "${candidate_file}"
 }
 
 cmd_status() {
@@ -460,7 +768,6 @@ cmd_status() {
 main() {
   local command=""
   local requested_worker=""
-  local prompt_file=""
 
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -485,7 +792,7 @@ main() {
         ;;
       --prompt-file)
         [[ "$#" -ge 2 ]] || die "--prompt-file requires a value"
-        prompt_file="$2"
+        INPUT_PROMPT_FILE="$2"
         shift 2
         ;;
       --dry-run)
@@ -527,6 +834,7 @@ main() {
       cmd_repair
       ;;
     review)
+      SELECTED_CX_REVIEW_WORKER="${requested_worker}"
       cmd_review
       ;;
     integrate)

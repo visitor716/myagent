@@ -1,0 +1,14 @@
+{
+  "name": "my-workflows",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/my-workflows",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/my-workflows",
+    "/home/zhanxp/.agents/skills/my-workflows",
+    "/home/zhanxp/.claude/skills/my-workflows",
+    "/home/zhanxp/.hermes/skills/myagent/my-workflows"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local workflow skill for Codex planning, Claude Code worktree implementation handoff, and Codex read-only review."
+}

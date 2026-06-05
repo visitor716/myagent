@@ -45,7 +45,7 @@ SKILL_TRANSLATIONS = {
         "desc": "[OMX] 运行全面的代码审查",
         "triggers": ["code review", "代码审查"]
     },
-    "codex-plan-claude-exec-review": {
+    "my-workflows": {
         "desc": "当用户希望 Codex 创建或改进计划、将计划交给 Claude Code worker 在隔离工作树中实现、选择或安排 tg-agent-gateway cc worker、然后让 Codex 对已完成的 Claude 工作进行只读审查、集成接受的更改、验证以及在需要时刷新本地网关运行时时使用。触发包括“安排 cc”、“安排cc”、“把计划交给 Claude 做”、“Claude 做完你 review”、“Codex 规划 Claude 执行 Codex 检查”、“plan to claude execute to codex review”以及类似的交接/审查工作流。",
         "triggers": ["安排 cc", "把计划交给 Claude 做", "Claude 做完你 review", "Codex 规划 Claude 执行"]
     },

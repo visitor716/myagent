@@ -137,7 +137,7 @@ candidate:
 ## Accepted Patch Lane
 
 Use this lane when the user says `merge`/`合并`/`发版` after a
-`codex-plan-claude-exec-review`
+`my-workflows`
 run where Codex reviewed a `cc*` worker diff, applied the accepted patch into
 `/home/zhanxp/projects/tg-agent-gateway`, and intentionally left the worker
 worktree dirty plus the `claude-cc*` tmux session open until final disposition.

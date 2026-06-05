@@ -430,7 +430,7 @@ Selection rules:
 Repair worker launch pattern (visible by default):
 
 ```bash
-/home/zhanxp/projects/myagent/skills/skills-local/codex-plan-claude-exec-review/scripts/launch_codex_worker_terminal.sh \
+/home/zhanxp/projects/myagent/skills/skills-local/my-workflows/scripts/launch_codex_worker_terminal.sh \
   --worktree /home/zhanxp/worktrees/tg-agent-gateway/<cxN> \
   --task-slug <cxN>-<task-slug>-repair \
   --prompt-file /home/zhanxp/projects/tg-agent-gateway/.omx/claude-handoffs/<cxN>-<task-slug>-repair.md \
@@ -466,7 +466,7 @@ If all candidates are unavailable or fail, report blocked rather than creating e
 - `cx2` review launch pattern (visible by default):
 
 ```bash
-/home/zhanxp/projects/myagent/skills/skills-local/codex-plan-claude-exec-review/scripts/launch_codex_worker_terminal.sh \
+/home/zhanxp/projects/myagent/skills/skills-local/my-workflows/scripts/launch_codex_worker_terminal.sh \
   --worktree /home/zhanxp/worktrees/tg-agent-gateway/cx2 \
   --task-slug cx2-<task-slug>-review \
   --prompt-file /home/zhanxp/projects/tg-agent-gateway/.omx/claude-handoffs/cx2-<task-slug>-review.md \
