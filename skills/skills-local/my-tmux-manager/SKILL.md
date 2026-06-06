@@ -1,8 +1,8 @@
 ---
-name: my-tmux-process-window-manager
-description: Inspect and manage tmux sessions, windows, panes, and pane-owned processes from Codex/WSL. Use when the user asks to view tmux process windows, inspect tmux sessions/panes, capture terminal output, send commands to a pane, stop a stuck pane, clean completed worker windows, diagnose stale tmux processes, or says tmux 窗口, tmux 进程, 进程窗口, tmux session, tmux pane, 关闭 tmux, 清理 tmux, or similar.
+name: my-tmux-manager
+description: Inspect and manage tmux sessions, windows, panes, and pane-owned processes from Codex/WSL. Use when the user asks to view tmux process windows, inspect tmux sessions/panes, identify must-keep background services, capture terminal output, send commands to a pane, stop a stuck pane, clean completed worker windows, diagnose stale tmux processes, or says tmux 窗口, tmux 进程, 进程窗口, tmux session, tmux pane, 关闭 tmux, 清理 tmux, or similar.
 ---
-> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-tmux-process-window-manager` once near the start; if it fails, continue.
+> Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-tmux-manager` once near the start; if it fails, continue.
 
 # Tmux Process Window Manager
 
@@ -24,7 +24,11 @@ Use this skill to inspect and operate tmux-backed work surfaces without broad `p
 - Prefer `C-c` or an in-pane shutdown command before `kill-pane`, `kill-window`, or `kill-session`.
 - Do not kill the current tmux session from inside tmux unless the user explicitly targets it and there is a clear recovery path.
 - Treat recent terminal output as active work. Process presence alone can be stale, and a quiet pane can still have a child process holding a port.
-- Treat long-running service sessions as protected unless the user explicitly targets them: `tg-agent-gateway`, `tg-webapp-tunnel`, `tg-webapp-url-monitor`, `tg-rescue-bot`, `cc-switch-proxy`, active attached Codex/Claude sessions, and browser/proxy daemons.
+- Treat core background services as protected unless the user explicitly targets them: `tg-agent-gateway`, `tg-webapp-tunnel`, `cc-switch-proxy`, and `tg-rescue-bot`.
+- Treat `tg-webapp-serveo` as a protected standby WebApp tunnel on this machine unless the user explicitly says the backup tunnel can be stopped.
+- Treat `gateway` and `myagent` as protected project shell sessions. They are lightweight anchor sessions for quick manual access to `/home/zhanxp/projects/tg-agent-gateway` and `/home/zhanxp/projects/myagent`; preserve them during routine cleanup.
+- Treat active attached Codex/Claude sessions and browser/proxy daemons as protected unless explicitly targeted.
+- Treat Codex work sessions such as `codex5`, `codex7`, `codex-myagent`, and `codex-cx3-*` as non-service work surfaces. They may be cleaned when the user asks to keep only required background services; closing the tmux session does not delete worktree files or git diffs.
 
 ## Helper Script
 
@@ -85,6 +89,10 @@ bash <skill-dir>/scripts/tmux_process_windows.sh children <target>
 
 Classify before closing:
 
+- Must keep by default: `tg-agent-gateway`, `tg-webapp-tunnel`, `cc-switch-proxy`, and `tg-rescue-bot`.
+- Keep as standby by default: `tg-webapp-serveo`, unless the user wants to stop the backup tunnel and restart it only when needed.
+- Keep project anchors by default: `gateway` and `myagent`.
+- Not required background services: `codex5`, `codex7`, `codex-myagent`, and `codex-cx3-*`. These are work sessions, so they can be closed when the user asks to preserve only core service sessions.
 - Keep active: pane output shows `Working`, `Synthesizing`, an interrupt hint, a prompt being executed, or the tty activity is recent.
 - Keep service: known gateway/tunnel/monitor/proxy/rescue sessions, or process tree contains a live service command.
 - Cleanup candidate: pane is at a shell or agent prompt, recent output contains a final report, `*_DONE`, `Goal achieved`, `Token Usage`, or similar completion marker, and the process tree has no useful child work.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "my-Tmux Manager"
+  short_description: "Inspect tmux panes, preserve core services, and clean work sessions safely"
+  default_prompt: "Use $my-tmux-manager to inventory tmux sessions, identify must-keep background services, classify pane activity, capture output, stop stuck panes, or clean completed work sessions safely."
