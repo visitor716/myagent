@@ -264,9 +264,8 @@
         <details class="paths"><summary>来源路径</summary><ul><li><code>skills-local/clash-proxy</code></li></ul></details>
         <details><summary>Agent 默认提示</summary><p>interface:
   display_name: &quot;my-Windows WSL Proxy&quot;
-  short_description: &quot;Diagnose Windows/WSL proxy routing, Clash policy, and aTrust coexistence&quot;
-  default_prompt: &quot;Use $my-clash-proxy to diagnose my Windows/WSL proxy, Clash/Mihomo routing, and aTrust/Sangfor coexistence safely.&quot;
-</p></details>
+  short_description: &quot;Diagnose Windows/WSL proxy routing, Clash policy, Codex/Claude env, and aTrust coexistence&quot;
+  default_prompt: &quot;Use $my-clash-proxy to diagnose my Windows/WSL proxy, Clash/Mihomo routing, Codex/Claude proxy env, gateway worker in</p></details>
       </article>
 
       <article class="skill-card" data-group="mixed" data-text="code-review [omx] 运行全面的代码审查 code review 代码审查">
@@ -536,15 +535,15 @@ defaults:
 
       </article>
 
-      <article class="skill-card" data-group="skills-local" data-text="my-tmux-process-window-manager inspect and manage tmux sessions, windows, panes, and pane-owned processes from codex/wsl. use when the user asks to view tmux process windows, inspect tmux sessions/panes, capture terminal output, send commands to a pane, stop a stuck pane, clean completed worker windows, diagnose stale tmux processes, or says tmux 窗口, tmux 进程, 进程窗口, tmux session, tmux pane, 关闭 tmux, 清理 tmux, or similar. inspect and manage tmux sessions, windows, panes, ">
+      <article class="skill-card" data-group="skills-local" data-text="my-tmux-manager inspect and manage tmux sessions, windows, panes, and pane-owned processes from codex/wsl. use when the user asks to view tmux process windows, inspect tmux sessions/panes, identify must-keep background services, capture terminal output, send commands to a pane, stop a stuck pane, clean completed worker windows, diagnose stale tmux processes, or says tmux 窗口, tmux 进程, 进程窗口, tmux session, tmux pane, 关闭 tmux, 清理 tmux, or similar. inspect and manage tmux sessions, windows, panes, ">
         <div class="card-head">
           <div>
-            <h2>my-tmux-process-window-manager</h2>
+            <h2>my-tmux-manager</h2>
             <p class="path">本地/链接</p>
           </div>
           <span class="badge">1 路径</span>
         </div>
-        <p class="desc">Inspect and manage tmux sessions, windows, panes, and pane-owned processes from Codex/WSL. Use when the user asks to view tmux process windows, inspect tmux sessions/panes, capture terminal output, send commands to a pane, stop a stuck pane, clean completed worker windows, diagnose stale tmux processes, or says tmux 窗口, tmux 进程, 进程窗口, tmux session, tmux pane, 关闭 tmux, 清理 tmux, or similar.</p>
+        <p class="desc">Inspect and manage tmux sessions, windows, panes, and pane-owned processes from Codex/WSL. Use when the user asks to view tmux process windows, inspect tmux sessions/panes, identify must-keep background services, capture terminal output, send commands to a pane, stop a stuck pane, clean completed worker windows, diagnose stale tmux processes, or says tmux 窗口, tmux 进程, 进程窗口, tmux session, tmux pane, 关闭 tmux, 清理 tmux, or similar.</p>
         <div class="trigger-block">
           <h3>自然语言触发词</h3>
           <div class="chips"><span class="chip">Inspect and manage tmux sessions, windows, panes, </span></div>
@@ -553,11 +552,11 @@ defaults:
 
 
         </div>
-        <details class="paths"><summary>来源路径</summary><ul><li><code>skills-local/my-tmux-process-window-manager</code></li></ul></details>
+        <details class="paths"><summary>来源路径</summary><ul><li><code>skills-local/my-tmux-manager</code></li></ul></details>
         <details><summary>Agent 默认提示</summary><p>interface:
-  display_name: &quot;Tmux Process Manager&quot;
-  short_description: &quot;Inspect, classify, and safely operate tmux panes&quot;
-  default_prompt: &quot;Use $my-tmux-process-window-manager to inventory tmux sessions, classify pane activity, capture output, send commands, stop stuck panes, or clean completed ses</p></details>
+  display_name: &quot;my-Tmux Manager&quot;
+  short_description: &quot;Inspect tmux panes, preserve core services, and clean work sessions safely&quot;
+  default_prompt: &quot;Use $my-tmux-manager to inventory tmux sessions, identify must-keep background services, classify pane activity, capture output, stop stuc</p></details>
       </article>
 
       <article class="skill-card" data-group="skills-local" data-text="my-workflows 当用户希望 codex 创建或改进计划、将计划交给 claude code worker 在隔离工作树中实现、选择或安排 tg-agent-gateway cc worker、然后让 codex 对已完成的 claude 工作进行只读审查、集成接受的更改、验证以及在需要时刷新本地网关运行时时使用。触发包括“安排 cc”、“安排cc”、“把计划交给 claude 做”、“claude 做完你 review”、“codex 规划 claude 执行 codex 检查”、“plan to claude execute to codex review”以及类似的交接/审查工作流。 安排 cc 把计划交给 claude 做 claude 做完你 review codex 规划 claude 执行">
@@ -1018,7 +1017,7 @@ policy:
 </p></details>
       </article>
 
-      <article class="skill-card" data-group="skills-local" data-text="tg-webapp-url-monitor operate and maintain the tg-agent-gateway webapp public url monitor. use when the user asks to monitor tg_webapp_url, detect expired trycloudflare links, auto-rotate stale webapp urls after sustained failure, start or stop the webapp url monitor, inspect monitor status, recover a broken telegram webapp entry, or package the monitor/deploy flow as a reusable skill. operate and maintain the tg-agent-gateway webapp p">
+      <article class="skill-card" data-group="skills-local" data-text="tg-webapp-url-monitor operate and maintain the tg-agent-gateway webapp public url monitor. use when the user asks to monitor tg_webapp_url, detect expired trycloudflare links, auto-rotate stale webapp urls after sustained failure, start or stop the webapp url monitor, inspect monitor status, recover a broken telegram webapp entry, diagnose wifi works but cellular/5g fails, or package the monitor/deploy flow as a reusable skill. operate and maintain the tg-agent-gateway webapp p">
         <div class="card-head">
           <div>
             <h2>tg-webapp-url-monitor</h2>
@@ -1026,7 +1025,7 @@ policy:
           </div>
           <span class="badge">1 路径</span>
         </div>
-        <p class="desc">Operate and maintain the tg-agent-gateway WebApp public URL monitor. Use when the user asks to monitor TG_WEBAPP_URL, detect expired trycloudflare links, auto-rotate stale WebApp URLs after sustained failure, start or stop the WebApp URL monitor, inspect monitor status, recover a broken Telegram WebApp entry, or package the monitor/deploy flow as a reusable skill.</p>
+        <p class="desc">Operate and maintain the tg-agent-gateway WebApp public URL monitor. Use when the user asks to monitor TG_WEBAPP_URL, detect expired trycloudflare links, auto-rotate stale WebApp URLs after sustained failure, start or stop the WebApp URL monitor, inspect monitor status, recover a broken Telegram WebApp entry, diagnose WiFi works but cellular/5G fails, or package the monitor/deploy flow as a reusable skill.</p>
         <div class="trigger-block">
           <h3>自然语言触发词</h3>
           <div class="chips"><span class="chip">Operate and maintain the tg-agent-gateway WebApp p</span></div>
@@ -1383,7 +1382,7 @@ policy:
     </main>
 
     <footer>
-      生成时间：2026-06-05 20:38:55 。触发词来自 frontmatter description、triggers 和 <code>agents/openai.yaml</code> 默认提示的规则提取；后续维护时优先更新对应 <code>SKILL.md</code> 的 description。
+      生成时间：2026-06-06 20:48:29 。触发词来自 frontmatter description、triggers 和 <code>agents/openai.yaml</code> 默认提示的规则提取；后续维护时优先更新对应 <code>SKILL.md</code> 的 description。
     </footer>
   </div>
 
