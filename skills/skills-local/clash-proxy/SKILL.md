@@ -1,6 +1,6 @@
 ---
 name: my-clash-proxy
-description: "Diagnose and safely configure Windows and WSL proxy networking. Use when the user mentions Windows proxy, WSL proxy, Clash, Clash Verge, Mihomo, sing-box, V2Ray, system proxy, WinHTTP, TUN, DNS hijack, aTrust, 深信服/Sangfor VPN, company intranet split routing, 企业微信内网访问, Clash/aTrust conflicts, http_proxy/https_proxy/all_proxy, tmux proxy inheritance, proxy region policy such as US-first Japan-fallback no-Hong-Kong, or asks about Windows/WSL 网络代理/代理软件/代理环境."
+description: "Diagnose and safely configure Windows and WSL proxy networking. Use when the user mentions Windows proxy, WSL proxy, Clash, Clash Verge, Mihomo, sing-box, V2Ray, system proxy, WinHTTP, TUN, DNS hijack, aTrust, 深信服/Sangfor VPN, company intranet split routing, 企业微信内网访问, Clash/aTrust conflicts, Codex Desktop Reconnecting, Codex/Claude proxy env, gateway/worktree proxy inheritance, http_proxy/https_proxy/all_proxy, tmux proxy inheritance, proxy region policy such as US-first Japan-fallback no-Hong-Kong, or asks about Windows/WSL 网络代理/代理软件/代理环境."
 ---
 > Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-clash-proxy` once near the start; if it fails, continue.
 
@@ -31,6 +31,7 @@ bash /home/zhanxp/projects/myagent/skills/skills-local/clash-proxy/scripts/diagn
    - Windows user proxy and WinHTTP proxy state.
    - aTrust/Sangfor process, adapter, route, and DNS evidence when present.
    - WSL `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`.
+   - Codex Desktop/app-server, Codex CLI, Claude Code, gateway, tmux, and worker process proxy inheritance when relevant.
    - TUN/DNS/IPv6 risks visible in config or logs.
    - Whether target processes inherited proxy env.
 
@@ -90,6 +91,87 @@ bash /home/zhanxp/projects/myagent/skills/skills-local/clash-proxy/scripts/print
 ```
 
 Use the printed exports temporarily first. Append to `~/.bashrc`, `~/.zshrc`, or profile files only when the user asks for persistent setup, and back up the target file first.
+
+For Codex/Claude CLI defaults in WSL:
+
+- Prefer the existing `~/.wsl-proxy.env` helper and `proxyon`; it should discover or use the saved current port, export `HTTP_PROXY`/`HTTPS_PROXY` plus lowercase variants, set `NO_PROXY`, and keep `ALL_PROXY` unset unless a task explicitly needs it.
+- Verify wrapper inheritance with:
+
+```bash
+bash -ic 'type codex; type claude; type hermes; WSL_PROXY_QUIET=1 proxyon; env | rg -i "^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy|NO_PROXY|no_proxy|ALL_PROXY|all_proxy)="'
+```
+
+- Do not hardcode `4062` in new instructions. First read the live Windows proxy and Clash/Mihomo config; use the actual `mixed-port` or HTTP `port` that passes a proxied curl probe.
+
+### Codex Desktop / app-server reconnecting
+
+When Codex Desktop, Codex App, or app-server is stuck on `Reconnecting`, treat proxy env as one possible cause, not the only cause.
+
+1. Detect the actual HTTP-capable endpoint first:
+
+```bash
+bash /home/zhanxp/projects/myagent/skills/skills-local/clash-proxy/scripts/diagnose_proxy.sh
+curl -I -m 12 -x http://127.0.0.1:<port> https://api.openai.com
+```
+
+Use `mixed-port` or HTTP `port`; do not use the SOCKS-only port for `HTTP_PROXY`.
+
+2. Create or update `~/.codex/.env`, preserving unrelated keys:
+
+```bash
+HTTP_PROXY="http://127.0.0.1:<actual-http-or-mixed-port>"
+HTTPS_PROXY="http://127.0.0.1:<actual-http-or-mixed-port>"
+```
+
+Back up an existing file before editing. Keep quotes, and do not print auth files or tokens.
+
+3. Validate parsing and the live app-server environment:
+
+```bash
+set -a; . ~/.codex/.env; set +a
+printf '%s\n' "$HTTP_PROXY" "$HTTPS_PROXY"
+codex app-server daemon version
+pid="$(pgrep -f 'codex app-server --remote-control' | head -n1)"
+tr '\0' '\n' < "/proc/$pid/environ" | rg -i '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy|NO_PROXY|no_proxy)='
+```
+
+4. Restart guidance:
+   - If restarting would break the current active Codex session, report exact commands instead of doing it silently.
+   - Otherwise run `codex app-server daemon restart`, then ask the user to fully quit Codex Desktop from the Windows tray or Task Manager and reopen it.
+
+If reconnecting continues after the proxy env is correct, inspect Codex Desktop/app-server socket and daemon logs next; do not keep changing Clash blindly.
+
+### tg-agent-gateway and worktree worker inheritance
+
+For `tg-agent-gateway`, gateway-launched Codex/Claude/Hermes workers inherit the gateway process env. To make future worker runs use the proxy by default:
+
+- Add or update the local project `.env` with the actual endpoint:
+
+```bash
+TG_GATEWAY_PROXY_URL="http://127.0.0.1:<actual-http-or-mixed-port>"
+HTTP_PROXY="http://127.0.0.1:<actual-http-or-mixed-port>"
+HTTPS_PROXY="http://127.0.0.1:<actual-http-or-mixed-port>"
+http_proxy="http://127.0.0.1:<actual-http-or-mixed-port>"
+https_proxy="http://127.0.0.1:<actual-http-or-mixed-port>"
+NO_PROXY="localhost,127.0.0.1,::1,.local,*.local,host.docker.internal,gateway.docker.internal,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16"
+no_proxy="localhost,127.0.0.1,::1,.local,*.local,host.docker.internal,gateway.docker.internal,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16"
+```
+
+- Also update existing worktree `.env` files if they exist. Do not create token-filled `.env` files in clean worktrees just for proxy inheritance unless the worktree is launched standalone.
+- Restart gateway with the repo's restart script when runtime inheritance must take effect:
+
+```bash
+bash scripts/restart-gateway.sh
+```
+
+- Verify the running gateway and child tools, not just the file:
+
+```bash
+pid="$(pgrep -f 'node dist/index.js' | head -n1)"
+tr '\0' '\n' < "/proc/$pid/environ" | rg -i '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy|NO_PROXY|no_proxy|TG_GATEWAY_PROXY_URL)='
+```
+
+Global `npm config set proxy` is usually unnecessary and can break intranet work; prefer shell/project env unless a package manager is the only failing surface.
 
 ### Windows system proxy and WinHTTP
 
