@@ -1,6 +1,6 @@
 ---
 name: tg-gateway-menu-recovery
-description: Diagnose and fix tg-agent-gateway Telegram menu, command-bar, or mobile WebApp no-response incidents, including /menu not returning, Telegram bottom menu clicks doing nothing, phone WebApp blank/no UI, stale Telegram WebApp popups pointing at old Cloudflare quick tunnels, WebApp URL or tunnel target drift, Gateway restart but bot inactive, phone WebApp loading loops fixed by rebuild/restart plus cache-busted fresh buttons, Telegraf launch/polling hangs, tmux restart scripts losing proxy environment, setMyCommands/setChatMenuButton failures, callback_data drift such as back_to_main vs back_to_menu, and launchAsBot worker token polling conflicts. Use when working in /home/zhanxp/projects/tg-agent-gateway on Telegram Bot UI, WebApp entry, manager bot startup, restart scripts, or mobile menu recovery.
+description: Diagnose and fix tg-agent-gateway Telegram menu, command-bar, or mobile WebApp no-response incidents, including /menu not returning, Telegram bottom menu clicks doing nothing, phone WebApp blank/no UI, iPhone Telegram four-square loader, WiFi works but cellular/5G does not, stale Telegram WebApp popups pointing at old Cloudflare quick tunnels, WebApp URL or tunnel target drift, Gateway restart but bot inactive, phone WebApp loading loops fixed by rebuild/restart plus cache-busted fresh buttons, Telegraf launch/polling hangs, tmux restart scripts losing proxy environment, setMyCommands/setChatMenuButton failures, callback_data drift such as back_to_main vs back_to_menu, and launchAsBot worker token polling conflicts. Use when working in /home/zhanxp/projects/tg-agent-gateway on Telegram Bot UI, WebApp entry, manager bot startup, restart scripts, or mobile menu recovery.
 ---
 
 # TG Gateway Menu Recovery
@@ -72,6 +72,28 @@ rg -n "@vite/client|/src/main|/assets/" /tmp/tg-webapp.html
    - If local `3000/health`, public HTML, and asset downloads are healthy but the phone still shows an endless loading state, suspect a stale Telegram WebApp popup/WebView or stale runtime asset state before assuming Cloudflare is down.
    - Prove the static path by comparing the current public asset hash after `npm run webapp:build`; Express serves `webapp/dist` from disk, but an already-open phone WebView can keep the old document until the popup is closed or the URL is cache-busted.
    - If a rebuild/restart makes the phone recover, record the root as stale WebApp runtime/cache or masked frontend loading state unless logs show a backend outage. Send a fresh button with a timestamp query parameter to bypass WebView cache.
+   - If WiFi opens the App but cellular/5G only shows the Telegram native four-square loader, treat it as a carrier-to-tunnel path problem until proven otherwise. `trycloudflare.com` quick tunnels can be reachable from WSL/desktop and still fail or hang inside Telegram iOS on mobile data.
+   - In that WiFi-vs-cellular split, do not keep rotating quick tunnels blindly. Prefer a stable named tunnel/custom hostname. As a temporary proof, an SSH reverse tunnel such as Serveo can be used if it returns the project production HTML directly:
+
+```bash
+tmux kill-session -t tg-webapp-serveo 2>/dev/null || true
+: > logs/runtime/serveo-tunnel.log
+tmux new-session -d -s tg-webapp-serveo "cd /home/zhanxp/projects/tg-agent-gateway && ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=10 -o ExitOnForwardFailure=yes -R 80:127.0.0.1:3000 serveo.net 2>&1 | tee -a logs/runtime/serveo-tunnel.log"
+sleep 8
+python3 - <<'PY'
+from pathlib import Path
+import re
+text = re.sub(r'\x1b\[[0-9;]*m', '', Path('logs/runtime/serveo-tunnel.log').read_text(errors='ignore'))
+print(re.search(r'https://\S+', text).group(0))
+PY
+```
+
+   - Before switching `TG_WEBAPP_URL` to any alternate tunnel, `curl -L` the candidate root and `/assets/index-*.js`. It must serve production `webapp/dist` HTML directly, with no warning/interstitial page.
+   - After switching tunnel domains, update `.env`, run `scripts/restart-gateway.sh`, run `npm run webapp:url-monitor`, and send a new timestamped WebApp button. Old Telegram buttons remain tied to their old domain.
+   - If available, add or use a minimal WebApp probe that logs document requests and a redacted startup beacon. Interpret the evidence as:
+     - no iPhone document request: Telegram WebView cannot reach the URL/domain.
+     - HTML/CSS/JS document requests but no startup beacon: script execution or CSP/page crash.
+     - startup beacon and `TelegramWebviewProxy.postEvent` bridge present: the page loaded; remaining four-square behavior is Telegram iOS/native loader or client-state specific, not the public URL or React bundle.
    - If using Telegram Web for proof, use the `wsl-windows-chrome` skill first, select the logged-in Telegram Web tab, close any old WebApp popup, click the newest fresh button, then inspect iframe URLs:
 
 ```bash
