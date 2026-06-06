@@ -1,6 +1,7 @@
 .omx/
 docs/agent-memory/heartbeat.md
 graphify-out/
+.codegraph/
 
 # Generated runtime/dependency artifacts inside migrated skills
 **/venv/
