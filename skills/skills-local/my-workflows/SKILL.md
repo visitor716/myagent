@@ -72,6 +72,37 @@ notification, and push when requested or explicitly included in the workflow.
 - Never run multiple repair workers in parallel. Repair worker default order
   remains `cx3 -> cx4 -> cx5`.
 
+## Parallel CC Read-Only Review Lane
+
+Use this lane when the user asks for multiple `cc` workers to review at the
+same time, for example `安排多个cc 同时review`.
+
+1. Define non-overlapping review lanes before launch. Split by contract surface
+   (for example DB/routing, API/service, WebApp UI, regression/tests) instead
+   of asking every reviewer to inspect the same full diff.
+2. Select clean idle reviewers from `cc3 -> cc10`. Keep `cc2` reserved as the
+   single read-only observer. Skip dirty worktrees, DB-active workers, and any
+   worker with an existing `claude-ccN-*` session.
+3. Write one handoff file per reviewer under `.omx/claude-handoffs/`. Each
+   prompt must say: read-only only, no implementation, no file edits, no commit,
+   no merge, no push, first line `PASS` or `FAIL`, findings with file/line
+   evidence, verification commands and result, risks, token usage if available.
+4. Launch reviewers with `launch_claude_worker_terminal.sh`, then verify:
+   `tmux list-panes` shows `pane_current_command=claude`, cwd is the assigned
+   worktree, and `git status --short` remains clean.
+5. Confirm each prompt actually started. If `tmux capture-pane` shows an idle
+   Claude prompt with `[Pasted text #...]` but no working/output state, send one
+   `Enter` to that specific session, wait a few seconds, and re-check. Do not
+   resend the prompt.
+6. Launch one `cc2` observer after the reviewer session names are known. The
+   observer watches all reviewer sessions/worktrees and writes
+   `.omx/observers/<slug>.result.md` with lane status, PASS/FAIL summary,
+   blocking findings, verification evidence, and result path.
+7. When the observer reports completion, synthesize the result. If any reviewer
+   reports a blocking FAIL, do not merge or silently fix in `master`; route the
+   finding through the normal `cx3 -> cx4 -> cx5` repair lane. If all PASS,
+   report that the review gate passed and list Low/Info follow-ups separately.
+
 ## Dynamic Fallback Orchestration
 
 Apply this flow when `cc` fails after first attempt.
@@ -158,6 +189,11 @@ exists, treat that worker as busy. Generic "安排 cc" requests must skip that
 worker and continue scanning `cc2`-`cc10`; fixed-worker requests such as
 "安排 cc2" must report waiting/unavailable for that worker. Do not resend the
 prompt and do not start a second task in the same `ccN`.
+
+After any visible Claude launch, verify the prompt was submitted, not only
+pasted. A pane that still shows `[Pasted text #...]` at an idle prompt is not a
+running reviewer/worker yet; send one `Enter` to that session and re-check the
+pane before reporting the launch as live.
 
 ## TG Gateway CC Worker Selection
 

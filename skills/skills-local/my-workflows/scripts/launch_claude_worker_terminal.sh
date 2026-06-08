@@ -272,6 +272,9 @@ if ! tmux has-session -t "\$TMUX_SESSION" 2>/dev/null; then
 
   tmux load-buffer -b "\$TMUX_SESSION-prompt" "\$CLAUDE_PROMPT_PATH"
   tmux paste-buffer -b "\$TMUX_SESSION-prompt" -t "\$TMUX_SESSION:0.0"
+  # Claude's TUI may need a short beat to finish bracketed-paste handling
+  # before Enter is accepted as prompt submission.
+  sleep 0.5
   tmux send-keys -t "\$TMUX_SESSION:0.0" Enter
   tmux delete-buffer -b "\$TMUX_SESSION-prompt" 2>/dev/null || true
 fi
