@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+#
+# save-codex-plan - 提取最后一个真实 <proposed_plan>...</proposed_plan> 块，
+# 保存到 Obsidian 笔记目录和项目内 plans 目录。
+#
+# Usage:
+#   save-codex-plan [slug]                    # 仅抓当前 tmux pane
+#   save-codex-plan --latest [slug]           # 扫所有 pane，取捕获时间最近的命中
+#   save-codex-plan --all [slug]              # 扫所有 pane，多命中时报歧义要求 --pane
+#   save-codex-plan --pane <target> [slug]    # 明确指定 pane
+#   save-codex-plan --file <path> [slug]      # 从文件读取（含原始内容）
+#   save-codex-plan --stdin [slug]            # 从 stdin 读取
+#   save-codex-plan --help
+#
+# 选项互斥：--pane / --latest / --all / --file / --stdin 只能选一个。
+#
+# slug：
+#   可选标签，附加到项目内文件名末尾。
+#
+# 真实 plan 判定：
+#   - 起止标签必须独占一行（前后只允许空白），避免误匹配散文里讨论标签的句子。
+#   - 块内非空非占位实质行 >= MIN_REAL_LINES，整块字节 >= MIN_BLOCK_BYTES。
+#   - 块内若再次出现“独占一行”的 <proposed_plan> 起标签，视为嵌套异常而 taint；
+#     行内提及（散文、代码块、heredoc）合法允许，不 taint。
+#
+# 输出文件：
+#   Obsidian:  /mnt/d/Obsidian/MyNote/04.数字游民/1、开发/项目/tg-agent-gateway/plan计划文档/codex-plan-YYYYMMDD-HHMMSS.md
+#   项目内:    /home/zhanxp/projects/tg-agent-gateway/plans/cx1/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS[__<slug>].md
+#
+
+set -euo pipefail
+
+OBSIDIAN_DIR="/mnt/d/Obsidian/MyNote/04.数字游民/1、开发/项目/tg-agent-gateway/plan计划文档"
+PROJECT_BASE_DIR="/home/zhanxp/projects/tg-agent-gateway/plans/cx1"
+
+MIN_REAL_LINES=3
+MIN_BLOCK_BYTES=100
+
+usage() {
+  sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# 模式： current | latest | all | pane | file | stdin
+MODE="current"
+TARGET_PANE=""
+INPUT_FILE=""
+SLUG=""
+
+set_mode() {
+  local new="$1"
+  if [ "$MODE" != "current" ] && [ "$MODE" != "$new" ]; then
+    echo "save-codex-plan: conflicting modes: $MODE vs $new" >&2
+    exit 2
+  fi
+  MODE="$new"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)      usage; exit 0 ;;
+    --latest)       set_mode latest; shift ;;
+    --all)          set_mode all; shift ;;
+    --stdin)        set_mode stdin; shift ;;
+    --pane)         set_mode pane; TARGET_PANE="${2:-}"; shift 2 ;;
+    --pane=*)       set_mode pane; TARGET_PANE="${1#*=}"; shift ;;
+    --file)         set_mode file; INPUT_FILE="${2:-}"; shift 2 ;;
+    --file=*)       set_mode file; INPUT_FILE="${1#*=}"; shift ;;
+    --)             shift; [ $# -gt 0 ] && SLUG="${1:-}"; break ;;
+    -*)             echo "save-codex-plan: unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *)
+      if [ -z "$SLUG" ]; then
+        SLUG="$1"; shift
+      else
+        echo "save-codex-plan: unexpected extra arg: $1" >&2
+        exit 2
+      fi
+      ;;
+  esac
+done
+
+# 抽取 stdin 中“最后一个真实” <proposed_plan> 块。
+# 详见文件头部的“真实 plan 判定”。
+extract_block() {
+  awk -v min_lines="$MIN_REAL_LINES" -v min_bytes="$MIN_BLOCK_BYTES" '
+    BEGIN { in_block=0; buf=""; lines=0; last=""; tainted=0 }
+
+    !in_block && /^[[:space:]]*<proposed_plan>[[:space:]]*$/ {
+      in_block=1; buf=$0 ORS; lines=0; tainted=0
+      next
+    }
+
+    in_block {
+      buf=buf $0 ORS
+
+      if ($0 ~ /^[[:space:]]*<\/proposed_plan>[[:space:]]*$/) {
+        if (!tainted && lines >= min_lines && length(buf) >= min_bytes) last=buf
+        in_block=0; buf=""; lines=0; tainted=0
+        next
+      }
+
+      if ($0 ~ /^[[:space:]]*<proposed_plan>[[:space:]]*$/) {
+        tainted=1
+      }
+
+      if ($0 !~ /^[[:space:]]*$/ && $0 !~ /\.\.\.[[:space:]]*计划内容[[:space:]]*\.\.\./) {
+        lines++
+      }
+    }
+
+    END {
+      if (last != "") printf "%s", last
+      else exit 1
+    }
+  '
+}
+
+# 当输入是“原始 markdown/文本”（来自 --file / --stdin）时，若没有 <proposed_plan>
+# 包裹，extract_block 会失败；这种情况下我们直接接受 raw 内容，按原样保存。
+# 当输入是 tmux capture 时，要求必须有真实块，避免抓到对话噪音。
+SOURCE_LABEL=""
+
+TS_OBSIDIAN="$(date +%Y%m%d-%H%M%S)"
+TS_PROJECT="$(date +%Y-%m-%d_%H-%M-%S)"
+DATE_DIR="$(date +%Y-%m-%d)"
+
+TMP_FILE="$(mktemp)"
+HIT_DIR="$(mktemp -d)"
+cleanup() { rm -f "$TMP_FILE"; rm -rf "$HIT_DIR"; }
+trap cleanup EXIT
+
+# 仅在需要使用 tmux 的模式下检查
+need_tmux() {
+  case "$MODE" in
+    current|latest|all|pane) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if need_tmux; then
+  command -v tmux >/dev/null 2>&1 || {
+    echo "save-codex-plan: tmux not found in PATH (use --file or --stdin instead)" >&2
+    exit 1
+  }
+fi
+
+# 拿到当前 pane id；不在 tmux 内时为空字符串。
+current_pane_id() {
+  if [ -n "${TMUX:-}" ]; then
+    tmux display-message -p '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true
+  fi
+}
+
+# 列出所有 pane，附带最后活动时间（用于 --latest 排序）。
+# 输出：activity_epoch<TAB>target
+list_panes_with_activity() {
+  tmux list-panes -a -F '#{pane_activity}	#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true
+}
+
+case "$MODE" in
+  current)
+    pane="$(current_pane_id)"
+    if [ -z "$pane" ]; then
+      echo "save-codex-plan: not inside a tmux session" >&2
+      echo "  try: save-codex-plan --latest        # scan all panes" >&2
+      echo "       save-codex-plan --file <path>   # save from file" >&2
+      echo "       save-codex-plan --stdin         # save from stdin" >&2
+      exit 1
+    fi
+    if ! tmux capture-pane -p -S - -t "$pane" 2>/dev/null | extract_block > "$TMP_FILE"; then
+      echo "save-codex-plan: no real <proposed_plan> block in current pane ($pane)" >&2
+      echo "  try: save-codex-plan --latest        # scan all panes" >&2
+      echo "       save-codex-plan --pane <target> # specify another pane" >&2
+      echo "       save-codex-plan --file <path>   # save from file" >&2
+      exit 1
+    fi
+    SOURCE_LABEL="pane $pane"
+    ;;
+
+  pane)
+    if [ -z "$TARGET_PANE" ]; then
+      echo "save-codex-plan: --pane requires a target" >&2
+      exit 2
+    fi
+    if ! tmux capture-pane -p -S - -t "$TARGET_PANE" 2>/dev/null | extract_block > "$TMP_FILE"; then
+      echo "save-codex-plan: no real <proposed_plan> block in pane: $TARGET_PANE" >&2
+      exit 1
+    fi
+    SOURCE_LABEL="pane $TARGET_PANE"
+    ;;
+
+  latest|all)
+    declare -a hits=()
+    declare -a activities=()
+    while IFS=$'\t' read -r act pane; do
+      [ -n "$pane" ] || continue
+      safe="$(printf '%s' "$pane" | tr ':/.% ' '_____')"
+      out="$HIT_DIR/$safe"
+      if tmux capture-pane -p -S - -t "$pane" 2>/dev/null | extract_block > "$out" 2>/dev/null; then
+        hits+=("$pane")
+        activities+=("${act:-0}")
+      else
+        rm -f "$out"
+      fi
+    done < <(list_panes_with_activity)
+
+    if [ "${#hits[@]}" -eq 0 ]; then
+      echo "save-codex-plan: no real <proposed_plan> block found in any tmux pane" >&2
+      echo "  如果计划在 Codex App/UI 中，请用 --stdin 或 --file 保存" >&2
+      exit 1
+    fi
+
+    if [ "$MODE" = "all" ] && [ "${#hits[@]}" -gt 1 ]; then
+      echo "save-codex-plan: multiple panes contain a <proposed_plan> block — specify --pane <target>:" >&2
+      for p in "${hits[@]}"; do
+        safe="$(printf '%s' "$p" | tr ':/.% ' '_____')"
+        bytes=$(wc -c < "$HIT_DIR/$safe" | tr -d ' ')
+        echo "  $p  (${bytes} bytes)" >&2
+      done
+      exit 1
+    fi
+
+    # latest（或 all 模式且只命中一个）：取 pane_activity 最大的那个
+    best_idx=0
+    best_act="${activities[0]}"
+    for i in "${!hits[@]}"; do
+      if [ "${activities[$i]}" -gt "$best_act" ] 2>/dev/null; then
+        best_act="${activities[$i]}"
+        best_idx="$i"
+      fi
+    done
+    chosen="${hits[$best_idx]}"
+    safe="$(printf '%s' "$chosen" | tr ':/.% ' '_____')"
+    cp "$HIT_DIR/$safe" "$TMP_FILE"
+    SOURCE_LABEL="pane $chosen (latest of ${#hits[@]} match$([ "${#hits[@]}" -gt 1 ] && echo es))"
+    ;;
+
+  file)
+    if [ -z "$INPUT_FILE" ] || [ ! -r "$INPUT_FILE" ]; then
+      echo "save-codex-plan: --file requires a readable path (got: '$INPUT_FILE')" >&2
+      exit 2
+    fi
+    if extract_block < "$INPUT_FILE" > "$TMP_FILE" 2>/dev/null && [ -s "$TMP_FILE" ]; then
+      SOURCE_LABEL="file $INPUT_FILE (extracted block)"
+    else
+      cp "$INPUT_FILE" "$TMP_FILE"
+      SOURCE_LABEL="file $INPUT_FILE (raw)"
+    fi
+    ;;
+
+  stdin)
+    cat > "$TMP_FILE"
+    if [ ! -s "$TMP_FILE" ]; then
+      echo "save-codex-plan: --stdin received empty input" >&2
+      exit 1
+    fi
+    # 若 stdin 内含真实块就抽出来；否则按 raw 原样保存
+    extracted="$(mktemp)"
+    if extract_block < "$TMP_FILE" > "$extracted" 2>/dev/null && [ -s "$extracted" ]; then
+      mv "$extracted" "$TMP_FILE"
+      SOURCE_LABEL="stdin (extracted block)"
+    else
+      rm -f "$extracted"
+      SOURCE_LABEL="stdin (raw)"
+    fi
+    ;;
+esac
+
+OBSIDIAN_FILE="$OBSIDIAN_DIR/codex-plan-${TS_OBSIDIAN}.md"
+if [ -n "$SLUG" ]; then
+  PROJECT_FILE="$PROJECT_BASE_DIR/$DATE_DIR/${TS_PROJECT}__${SLUG}.md"
+else
+  PROJECT_FILE="$PROJECT_BASE_DIR/$DATE_DIR/${TS_PROJECT}.md"
+fi
+
+mkdir -p "$OBSIDIAN_DIR"
+mkdir -p "$(dirname "$PROJECT_FILE")"
+
+cp "$TMP_FILE" "$OBSIDIAN_FILE"
+cp "$TMP_FILE" "$PROJECT_FILE"
+
+echo "source: $SOURCE_LABEL"
+echo "saved: $OBSIDIAN_FILE"
+echo "saved: $PROJECT_FILE"
