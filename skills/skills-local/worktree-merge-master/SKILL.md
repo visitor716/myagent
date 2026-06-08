@@ -16,6 +16,8 @@ Use this skill for `tg-agent-gateway` multi-worktree integration and worker-bran
   back up and stash superseded/failed variants.
 - **Dirty audit lane**: classify dirty worker worktrees as accepted-exact, keep-review, or reviewed discard before syncing worker refs.
 - **Push/sync lane**: after phone self-test is accepted, push `master`, align active worker/planner/reviewer branches to the latest `master`, and push safe refs.
+- **Master-only push lane**: push a clean `master`-only commit such as docs,
+  plans, or evidence archives without syncing worker refs.
 - **Cleanup lane**: after accepted work is synced, remove obsolete historical remote refs and close completed worker tmux sessions.
 
 For merge/push/sync requests that finish accepted Claude worker work, do not
@@ -43,6 +45,14 @@ After the user accepts the phone self-test, finish the push/sync lane:
 3. Push the active branch set when refs are clean and non-diverged.
 4. Fetch/prune and audit that local/remote counts are `0 0`.
 5. Close completed accepted Claude worker tmux sessions.
+
+If `master` is ahead only because of a master-only docs/plans/evidence archive
+commit and no accepted worker branch needs final disposition, use the
+master-only push lane instead: push only `master`, fetch/prune, confirm
+`master...origin/master` is clean, and do not fast-forward or push worker refs.
+Do not restart Gateway/WebApp or send `/app` for docs/data archive commits that
+cannot affect runtime behavior. Do not close worker tmux sessions unless this
+push also finishes accepted worker work.
 
 This standing preference does not permit force push, branch deletion, resetting
 dirty worktrees, overwriting user work, or pushing refs that diverged remotely.
@@ -282,6 +292,26 @@ git push --force-with-lease=refs/heads/wt/cc7:<old-remote-sha> origin wt/cc7:wt/
 ```
 
 Keep a local backup branch for the overwritten remote worker commit.
+
+### Master-Only Pushes
+
+Use this path when `git status --short --branch` shows only `master` ahead of
+`origin/master`, the worktree has no tracked diff, and the new commit does not
+need worker refs to match it (for example evidence archives, review docs,
+plans, screenshots, or other master-only records).
+
+```bash
+git status --short --branch
+git log --oneline --decorate -3
+git push origin master
+git fetch origin --prune
+git status --short --branch
+```
+
+Report that worker refs were intentionally skipped. Historical and active
+worker refs may remain at the previous runtime commit; that is acceptable when
+the pushed commit is a master-only archive and no worker is being released or
+cleaned.
 
 ### What Counts As Unified
 
