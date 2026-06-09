@@ -14,6 +14,10 @@ FIXTURE_TG_DIR=""
 FIXTURE_WORKTREES=""
 FIXTURE_SCRIPTS=""
 FIXTURE_LAUNCH_LOG=""
+ORIGINAL_PATH="${PATH}"
+FAKE_TMUX_DIR=""
+FAKE_TMUX_LOG=""
+FAKE_TMUX_SESSIONS=""
 
 log_test() {
   printf '\n[TEST] %s\n' "$*"
@@ -55,6 +59,109 @@ assert_file_contains() {
     printf '    file: %s\n    expected to find: %s\n' "${file}" "${needle}" >&2
     return 1
   fi
+}
+
+assert_file_not_contains() {
+  local file="$1"
+  local needle="$2"
+  local message="$3"
+  if [[ -f "${file}" ]] && ! grep -Fq -- "${needle}" "${file}"; then
+    pass "${message}"
+  else
+    fail "${message}"
+    printf '    file: %s\n    should not contain: %s\n' "${file}" "${needle}" >&2
+    return 1
+  fi
+}
+
+write_fake_tmux() {
+  local fake_dir="$1"
+  mkdir -p "${fake_dir}"
+  cat > "${fake_dir}/tmux" <<'EOF_TMUX'
+#!/usr/bin/env bash
+set -euo pipefail
+
+log_path="${MY_WORKFLOWS_FAKE_TMUX_LOG:-}"
+if [[ -n "${log_path}" ]]; then
+  printf '%q' "$1" >> "${log_path}"
+  for arg in "${@:2}"; do
+    printf ' %q' "${arg}" >> "${log_path}"
+  done
+  printf '\n' >> "${log_path}"
+fi
+
+target_from_args() {
+  local target=""
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      -t)
+        target="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  printf '%s\n' "${target}"
+}
+
+case "${1:-}" in
+  has-session)
+    target="$(target_from_args "$@")"
+    printf '%s\n' "${MY_WORKFLOWS_FAKE_TMUX_SESSIONS:-}" | grep -Fxq -- "${target}"
+    ;;
+  display-message)
+    target="$(target_from_args "$@")"
+    format="${*: -1}"
+    if [[ "${format}" == '#{pane_current_command}' ]]; then
+      printf 'claude\n'
+    elif [[ "${format}" == '#{pane_current_path}' ]]; then
+      session="${target%%:*}"
+      worker="unknown"
+      if [[ "${session}" =~ ^claude-(cc[0-9]+)- ]]; then
+        worker="${BASH_REMATCH[1]}"
+      fi
+      printf '%s/%s\n' "${MY_WORKFLOWS_TG_GATEWAY_WORKTREES:-/tmp/worktrees}" "${worker}"
+    fi
+    ;;
+  capture-pane)
+    printf '%s\n' "${MY_WORKFLOWS_FAKE_TMUX_CAPTURE:-● Summary
+Changed Files
+Verification
+Token Usage}"
+    ;;
+  load-buffer|paste-buffer|send-keys|list-sessions)
+    if [[ "${1:-}" == "list-sessions" ]]; then
+      printf '%s\n' "${MY_WORKFLOWS_FAKE_TMUX_SESSIONS:-}"
+    fi
+    ;;
+  *)
+    ;;
+esac
+EOF_TMUX
+  chmod +x "${fake_dir}/tmux"
+}
+
+setup_fake_tmux() {
+  local sessions="$1"
+  FAKE_TMUX_DIR="${TEST_TMP_ROOT}/fake-bin"
+  FAKE_TMUX_LOG="${TEST_TMP_ROOT}/fake-tmux.log"
+  FAKE_TMUX_SESSIONS="${sessions}"
+  : > "${FAKE_TMUX_LOG}"
+  write_fake_tmux "${FAKE_TMUX_DIR}"
+  export PATH="${FAKE_TMUX_DIR}:${ORIGINAL_PATH}"
+  export MY_WORKFLOWS_FAKE_TMUX_LOG="${FAKE_TMUX_LOG}"
+  export MY_WORKFLOWS_FAKE_TMUX_SESSIONS="${FAKE_TMUX_SESSIONS}"
+  export MY_WORKFLOWS_FAKE_TMUX_CAPTURE='● Summary
+Changed Files
+Verification
+Token Usage'
+}
+
+observe_report_path() {
+  local task_slug="$1"
+  printf '%s/.omx/observers/%s.result.md\n' "${FIXTURE_TG_DIR}" "${task_slug}"
 }
 
 write_fake_launcher() {
@@ -134,7 +241,7 @@ setup_fixture() {
   : > "${FIXTURE_LAUNCH_LOG}"
 
   local worker
-  for worker in cc2 cc3 cc4 cx2 cx3 cx4 cx5; do
+  for worker in cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10 cx2 cx3 cx4 cx5; do
     init_worker_repo "${worker}"
   done
 
@@ -162,6 +269,14 @@ cleanup_fixture() {
   unset MY_WORKFLOWS_SCRIPTS_DIR
   unset MY_WORKFLOWS_LAUNCH_LOG
   unset MY_WORKFLOWS_IGNORE_RUNTIME_BUSY
+  unset MY_WORKFLOWS_FAKE_TMUX_LOG
+  unset MY_WORKFLOWS_FAKE_TMUX_SESSIONS
+  unset MY_WORKFLOWS_FAKE_TMUX_CAPTURE
+  unset MY_WORKFLOWS_OBSERVER_REPORT_SEND_LIMIT_BYTES
+  PATH="${ORIGINAL_PATH}"
+  FAKE_TMUX_DIR=""
+  FAKE_TMUX_LOG=""
+  FAKE_TMUX_SESSIONS=""
 }
 
 make_prompt() {
@@ -276,6 +391,8 @@ test_orchestrate_writes_handoffs_and_launches_workers() {
   local observer_handoff="${FIXTURE_TG_DIR}/.omx/observers/cc2-demo-observer.md"
   assert_file_contains "${cc_handoff}" "Implement the requested demo change" "orchestrate writes implementation handoff"
   assert_file_contains "${observer_handoff}" "Read-Only Observer Handoff" "orchestrate writes observer handoff"
+  assert_file_contains "${observer_handoff}" "observe-group --task demo --workers cc3 --target-pane cx2:0.0" "observer handoff calls observe-group"
+  assert_file_contains "${observer_handoff}" ".omx/observers/demo.result.md" "observer handoff records group result path"
   assert_file_contains "${FIXTURE_LAUNCH_LOG}" "launch_claude_worker_terminal.sh|worktree=${FIXTURE_WORKTREES}/cc3|task=cc3-demo" "orchestrate launches cc3"
   assert_file_contains "${FIXTURE_LAUNCH_LOG}" "launch_claude_worker_terminal.sh|worktree=${FIXTURE_WORKTREES}/cc2|task=cc2-demo-observer" "orchestrate launches cc2 observer"
   cleanup_fixture
@@ -398,6 +515,204 @@ test_integrate_writes_candidate() {
   cleanup_fixture
 }
 
+test_observe_group_dry_run_writes_result_and_skips_paste() {
+  log_test "observe-group dry-run writes result and skips paste"
+
+  setup_fixture
+  setup_fake_tmux $'claude-cc3-observe-demo\nclaude-cc4-observe-demo-docs'
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" observe-group \
+    --task observe-demo \
+    --workers cc3,cc4 \
+    --target-pane cx2:0.0 \
+    --dry-run 2>&1)" || exit_code="$?"
+
+  local report
+  report="$(observe_report_path observe-demo)"
+
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "observe-group dry-run exits zero"
+  else
+    fail "observe-group dry-run should exit zero: ${output}"
+  fi
+  assert_contains "${output}" "${report}" "dry-run prints report path"
+  assert_file_contains "${report}" "Task slug: \`observe-demo\`" "report records task slug"
+  assert_file_contains "${report}" "Observed workers: \`cc3,cc4\`" "report records all workers"
+  assert_file_contains "${report}" "Target cx2 pane: \`cx2:0.0\`" "report records target pane"
+  assert_file_contains "${report}" "Matched tmux session: \`claude-cc4-observe-demo-docs\`" "report matches task-prefixed lane session"
+  assert_file_not_contains "${FAKE_TMUX_LOG}" "paste-buffer" "dry-run does not paste to tmux"
+  cleanup_fixture
+}
+
+test_observe_group_rejects_invalid_workers() {
+  log_test "observe-group rejects invalid workers"
+
+  setup_fixture
+  setup_fake_tmux ""
+
+  local workers output exit_code
+  for workers in cc2 cc11 cx3; do
+    exit_code=0
+    output="$("${MY_WORKFLOWS_SH}" observe-group --task invalid-demo --workers "${workers}" --dry-run 2>&1)" || exit_code="$?"
+    if [[ "${exit_code}" -ne 0 ]]; then
+      pass "rejects ${workers}"
+    else
+      fail "observe-group should reject ${workers}"
+    fi
+    if [[ "${workers}" == "cc2" ]]; then
+      assert_contains "${output}" "reserved as observer" "invalid ${workers} error is explicit"
+    else
+      assert_contains "${output}" "Observed worker must be one of cc3-cc10" "invalid ${workers} error is explicit"
+    fi
+  done
+
+  cleanup_fixture
+}
+
+test_observe_group_marks_missing_worktree_and_session() {
+  log_test "observe-group marks missing worktree/session"
+
+  setup_fixture
+  rm -rf "${FIXTURE_WORKTREES}/cc6"
+  setup_fake_tmux $'claude-cc3-missing-demo'
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" observe-group \
+    --task missing-demo \
+    --workers cc3,cc4,cc6 \
+    --target-pane cx2:0.0 \
+    --dry-run 2>&1)" || exit_code="$?"
+
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "observe-group handles missing resources without crashing"
+  else
+    fail "observe-group should not crash on missing resources: ${output}"
+  fi
+
+  local report
+  report="$(observe_report_path missing-demo)"
+  assert_file_contains "${report}" "Worker \`cc4\`" "report includes missing-session worker"
+  assert_file_contains "${report}" "State: \`missing-session\`" "report marks missing session"
+  assert_file_contains "${report}" "missing worktree" "report marks missing worktree"
+  assert_file_contains "${report}" "人工确认 blocker" "report recommends blocker confirmation"
+  cleanup_fixture
+}
+
+test_observe_group_marks_dirty_worker_ready_for_review() {
+  log_test "observe-group marks completed dirty worker for review"
+
+  setup_fixture
+  setup_fake_tmux $'claude-cc3-review-demo'
+  printf 'change\n' > "${FIXTURE_WORKTREES}/cc3/change.txt"
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" observe-group \
+    --task review-demo \
+    --workers cc3 \
+    --target-pane cx2:0.0 \
+    --dry-run 2>&1)" || exit_code="$?"
+
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "observe-group dirty review case exits zero"
+  else
+    fail "observe-group dirty review case should exit zero: ${output}"
+  fi
+
+  local report
+  report="$(observe_report_path review-demo)"
+  assert_file_contains "${report}" "State: \`dirty-needs-review\`" "dirty completed worker needs review"
+  assert_file_contains "${report}" "Recommendation: \`进入 review\`" "dirty completed worker recommends review"
+  cleanup_fixture
+}
+
+test_observe_group_marks_failed_worker_blocked() {
+  log_test "observe-group marks failed worker blocked"
+
+  setup_fixture
+  setup_fake_tmux $'claude-cc3-failed-demo'
+  export MY_WORKFLOWS_FAKE_TMUX_CAPTURE='● Summary
+Error: Exit code 1
+Verification failed'
+  printf 'change\n' > "${FIXTURE_WORKTREES}/cc3/change.txt"
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" observe-group \
+    --task failed-demo \
+    --workers cc3 \
+    --target-pane cx2:0.0 \
+    --dry-run 2>&1)" || exit_code="$?"
+
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "observe-group failed worker case exits zero"
+  else
+    fail "observe-group failed worker case should exit zero: ${output}"
+  fi
+
+  local report
+  report="$(observe_report_path failed-demo)"
+  assert_file_contains "${report}" "State: \`blocked\`" "failed worker is blocked"
+  assert_file_contains "${report}" "Recommendation: \`要求 worker 修复\`" "failed worker recommends repair"
+  cleanup_fixture
+}
+
+test_observe_group_non_dry_run_uses_tmux_arguments() {
+  log_test "observe-group non-dry-run uses tmux arguments"
+
+  setup_fixture
+  setup_fake_tmux $'claude-cc3-send-demo'
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" observe-group \
+    --task send-demo \
+    --workers cc3 \
+    --target-pane cx2:0.0 2>&1)" || exit_code="$?"
+
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "observe-group non-dry-run exits zero"
+  else
+    fail "observe-group non-dry-run should exit zero: ${output}"
+  fi
+
+  assert_file_contains "${FAKE_TMUX_LOG}" "load-buffer" "non-dry-run loads tmux buffer"
+  assert_file_contains "${FAKE_TMUX_LOG}" "paste-buffer -t cx2:0.0" "non-dry-run pastes to target pane"
+  assert_file_contains "${FAKE_TMUX_LOG}" "send-keys -t cx2:0.0 Enter" "non-dry-run sends Enter to target pane"
+  cleanup_fixture
+}
+
+test_observe_group_sends_summary_for_long_report() {
+  log_test "observe-group sends summary for long report"
+
+  setup_fixture
+  setup_fake_tmux $'claude-cc3-summary-demo'
+  export MY_WORKFLOWS_OBSERVER_REPORT_SEND_LIMIT_BYTES=1
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" observe-group \
+    --task summary-demo \
+    --workers cc3 \
+    --target-pane cx2:0.0 2>&1)" || exit_code="$?"
+
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "observe-group summary send exits zero"
+  else
+    fail "observe-group summary send should exit zero: ${output}"
+  fi
+
+  local summary="${FIXTURE_TG_DIR}/.omx/observers/summary-demo.summary.md"
+  local report
+  report="$(observe_report_path summary-demo)"
+  assert_file_contains "${FAKE_TMUX_LOG}" "load-buffer ${summary}" "long report loads summary buffer"
+  assert_file_contains "${summary}" "report: ${report}" "summary points to full report"
+  cleanup_fixture
+}
+
 test_launcher_syntax() {
   log_test "Launcher syntax"
 
@@ -433,6 +748,13 @@ run_all_tests() {
   test_repair_writes_handoff_and_launches_codex
   test_review_launches_cx2_only
   test_integrate_writes_candidate
+  test_observe_group_dry_run_writes_result_and_skips_paste
+  test_observe_group_rejects_invalid_workers
+  test_observe_group_marks_missing_worktree_and_session
+  test_observe_group_marks_dirty_worker_ready_for_review
+  test_observe_group_marks_failed_worker_blocked
+  test_observe_group_non_dry_run_uses_tmux_arguments
+  test_observe_group_sends_summary_for_long_report
   test_launcher_syntax
 
   printf '\n=== Test results ===\n'

@@ -262,6 +262,10 @@ any `cc*` worker other than `cc2`, or whenever multiple `cc*` workers are
 launched for related implementation tasks.
 
 - Default observer worker: `cc2`.
+- One `cc2` observer covers every implementation worker in the current task
+  group. Do not launch multiple observer tasks for the same group.
+- The default observation scope is the explicit current task-group worker list;
+  do not scan historical worker sessions.
 - `cc2` is read-only in observer mode. It must not edit files, run fix commands,
   merge, commit, push, or send prompts into implementation workers.
 - Start the observer after the implementation worker terminal(s) have been
@@ -269,6 +273,10 @@ launched for related implementation tasks.
 - The observer should monitor exact worker sessions and worktrees, for example
   `claude-cc4-<task-slug>` and
   `/home/zhanxp/worktrees/tg-agent-gateway/cc4`.
+- The group observer result is written to
+  `.omx/observers/<task-slug>.result.md`.
+- By default, the report is sent to `cx2:0.0`; callers may override this with
+  `--target-pane`.
 - The observer reports completion status, final worker result, diff summary,
   verification evidence, obvious stalls or failures, and the final result path
   back to the `cx2` leader pane when that pane is known. If the `cx2` pane is
@@ -282,6 +290,15 @@ launched for related implementation tasks.
 - For multiple concurrent `cc*` implementation workers, use one `cc2` observer
   prompt that lists all exact target sessions/worktrees instead of launching
   multiple observer tasks in `cc2`.
+
+`observe-group` example:
+
+```bash
+scripts/my_workflows.sh observe-group \
+  --task <task-slug> \
+  --workers cc3,cc4,cc6 \
+  --target-pane cx2:0.0
+```
 
 CC2 observer prompt shape:
 
@@ -297,6 +314,7 @@ CC2 observer prompt shape:
 - 如果目标长时间没有新输出、失败、无 diff、验证失败或越权修改，报告 blocker。
 - 将结果通知 cx2 pane（若提供），并写入 .omx/observers/<slug>.result.md。
 - 最终报告必须包含执行状态、diff 摘要、验证证据、stall/failure blocker 和结果文件路径。
+- cc2 生成 group observer report 并发送给 cx2。
 
 禁止：
 - 不修改任何文件。

@@ -10,6 +10,7 @@ Usage:
   tmux_process_windows.sh classify <target>
   tmux_process_windows.sh capture <target> [lines]
   tmux_process_windows.sh children <target>
+  tmux_process_windows.sh new-codex-session <session> [cwd]
   tmux_process_windows.sh send-text <target> <text> [--enter]
   tmux_process_windows.sh send-keys <target> <key...>
   tmux_process_windows.sh stop <target> [--kill-after <seconds> --yes]
@@ -41,6 +42,39 @@ require_yes() {
     echo "destructive action requires explicit --yes" >&2
     exit 2
   fi
+}
+
+require_directory() {
+  local directory="$1"
+  if [ ! -d "$directory" ]; then
+    echo "directory does not exist: $directory" >&2
+    exit 2
+  fi
+}
+
+validate_session_name() {
+  local session="$1"
+  if ! printf '%s\n' "$session" | grep -Eq '^[A-Za-z0-9_.-]+$'; then
+    echo "invalid session name: $session" >&2
+    echo "allowed characters: letters, numbers, dot, underscore, hyphen" >&2
+    exit 2
+  fi
+}
+
+session_exists() {
+  local session="$1"
+  tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Fxq -- "$session"
+}
+
+default_codex_session_cwd() {
+  local session="$1"
+  local tg_worktree="/home/zhanxp/worktrees/tg-agent-gateway/$session"
+  if [ -d "$tg_worktree" ]; then
+    printf '%s\n' "$tg_worktree"
+    return 0
+  fi
+
+  return 1
 }
 
 pane_pid() {
@@ -156,6 +190,38 @@ show_children() {
   else
     ps -o pid,ppid,pgid,stat,etime,cmd -p "$pid" || true
   fi
+}
+
+new_codex_session() {
+  local session="$1"
+  local cwd="${2:-}"
+  require_target "$session"
+  validate_session_name "$session"
+
+  if session_exists "$session"; then
+    echo "tmux session already exists: $session" >&2
+    echo "inspect it with: $0 capture $session:0.0 80" >&2
+    exit 2
+  fi
+
+  if [ -z "$cwd" ]; then
+    cwd="$(default_codex_session_cwd "$session" || true)"
+  fi
+  if [ -z "$cwd" ]; then
+    echo "cwd is required when /home/zhanxp/worktrees/tg-agent-gateway/$session does not exist" >&2
+    exit 2
+  fi
+  require_directory "$cwd"
+
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "codex is not installed or not on PATH" >&2
+    exit 127
+  fi
+
+  tmux new-session -d -s "$session" -n codex -c "$cwd" codex
+  sleep 0.5
+  echo "created codex session: $session"
+  tmux list-panes -t "$session" -F 'pane=#{session_name}:#{window_index}.#{pane_index} active=#{pane_active} dead=#{pane_dead} pid=#{pane_pid} cmd=#{pane_current_command} cwd=#{pane_current_path} title=#{pane_title}'
 }
 
 classify_target() {
@@ -276,6 +342,9 @@ main() {
       ;;
     children)
       show_children "${1:-}"
+      ;;
+    new-codex-session|new-codex)
+      new_codex_session "${1:-}" "${2:-}"
       ;;
     send-text)
       send_text "${1:-}" "${2:-}" "${3:-}"

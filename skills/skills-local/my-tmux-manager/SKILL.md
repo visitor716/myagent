@@ -1,6 +1,6 @@
 ---
 name: my-tmux-manager
-description: Inspect and manage tmux sessions, windows, panes, and pane-owned processes from Codex/WSL. Use when the user asks to view tmux process windows, inspect tmux sessions/panes, identify must-keep background services, capture terminal output, send commands to a pane, stop a stuck pane, clean completed worker windows, diagnose stale tmux processes, or says tmux 窗口, tmux 进程, 进程窗口, tmux session, tmux pane, 关闭 tmux, 清理 tmux, or similar.
+description: Inspect and manage tmux sessions, windows, panes, and pane-owned processes from Codex/WSL. Use when the user asks to view tmux process windows, inspect tmux sessions/panes, open a new Codex worker session, identify must-keep background services, capture terminal output, send commands to a pane, stop a stuck pane, clean completed worker windows, diagnose stale tmux processes, or says tmux 窗口, tmux 进程, 进程窗口, tmux session, tmux pane, 新开 cx/codex 会话, 关闭 tmux, 清理 tmux, or similar.
 ---
 > Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-tmux-manager` once near the start; if it fails, continue.
 
@@ -12,6 +12,7 @@ Use this skill to inspect and operate tmux-backed work surfaces without broad `p
 
 - Listing tmux sessions/windows/panes and their cwd/processes.
 - Capturing recent pane output before deciding what to do.
+- Opening a fresh visible Codex worker session such as `cx2` in its worktree.
 - Sending commands or prompts into an exact pane.
 - Stopping stuck panes or cleaning completed agent sessions.
 - Managing `tg-agent-gateway` worker panes while preserving gateway/tunnel/monitor services.
@@ -42,6 +43,7 @@ bash <skill-dir>/scripts/tmux_process_windows.sh recent
 bash <skill-dir>/scripts/tmux_process_windows.sh classify <target>
 bash <skill-dir>/scripts/tmux_process_windows.sh capture <target> 120
 bash <skill-dir>/scripts/tmux_process_windows.sh children <target>
+bash <skill-dir>/scripts/tmux_process_windows.sh new-codex-session <session> [cwd]
 bash <skill-dir>/scripts/tmux_process_windows.sh send-text <target> "npm run build" --enter
 bash <skill-dir>/scripts/tmux_process_windows.sh stop <target>
 ```
@@ -56,6 +58,7 @@ Supported actions:
 - `classify <target>` - print recent output and process tree plus heuristic cleanup notes.
 - `capture <target> [lines]` - print the last lines from a pane without using tmux buffers.
 - `children <target>` - show the pane's root PID and related process group.
+- `new-codex-session <session> [cwd]` - create a detached visible Codex tmux session with window name `codex`. If `cwd` is omitted and `/home/zhanxp/worktrees/tg-agent-gateway/<session>` exists, that worktree is used. Existing sessions are never replaced.
 - `send-text <target> <text> [--enter]` - paste text into a pane, optionally pressing Enter.
 - `send-keys <target> <key...>` - send tmux key names such as `C-c`, `Enter`, or `Escape`.
 - `stop <target> [--kill-after <seconds> --yes]` - send `C-c`; only kills the pane after the delay when `--yes` is provided.
@@ -85,6 +88,31 @@ bash <skill-dir>/scripts/tmux_process_windows.sh children <target>
    - Forced cleanup: capture output, verify the target is no longer doing useful work, then use `kill-pane|kill-window|kill-session <target> --yes`.
 
 4. Verify after any state-changing action by re-running `summary` and any relevant process/port checks.
+
+## Opening Codex Worker Sessions
+
+Use this when the user says things like `新开一个cx2会话`, `开 cx3`, `新开 Codex worker`, or asks for a visible Codex pane.
+
+Rules:
+
+- Inventory first with `summary`; if the target session already exists, inspect it instead of creating a duplicate.
+- Use the worker's existing worktree. For `tg-agent-gateway`, the default path is `/home/zhanxp/worktrees/tg-agent-gateway/<session>`.
+- Do not create missing worktrees from this skill. If the worktree does not exist, report the missing path and stop.
+- Start Codex as an interactive tmux pane, not `codex exec`, when the user asks for a session/window/pane.
+- Verify startup with `summary`, `capture <session>:0.0 60`, and `children <session>:0.0`.
+
+```bash
+bash <skill-dir>/scripts/tmux_process_windows.sh summary
+bash <skill-dir>/scripts/tmux_process_windows.sh new-codex-session cx2
+bash <skill-dir>/scripts/tmux_process_windows.sh capture cx2:0.0 60
+bash <skill-dir>/scripts/tmux_process_windows.sh children cx2:0.0
+```
+
+For a non-standard cwd, pass it explicitly:
+
+```bash
+bash <skill-dir>/scripts/tmux_process_windows.sh new-codex-session codex-myagent /home/zhanxp/projects/myagent
+```
 
 ## Cleanup Heuristics
 
@@ -165,6 +193,8 @@ This is not a bypass — `tmux kill-session -t <name>` is the exact action the h
 ## Failure Handling
 
 - If `tmux` is missing, report that tmux is unavailable and do not substitute generic process killing.
+- If `codex` is missing when opening a Codex session, report the missing binary and do not create a shell-only placeholder unless the user explicitly asks for a shell.
+- If the requested Codex session already exists, do not kill or replace it; capture the existing pane and report how to attach.
 - If the target does not exist, re-run `summary` and resolve a fresh exact target.
 - If a pane's process tree shows a long-running child, inspect its purpose before killing the pane.
 - If a port remains occupied after tmux cleanup, inspect the raw process owner with `ss -ltnp` or `/proc/<pid>/cwd` before taking further action.
