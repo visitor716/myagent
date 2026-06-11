@@ -12,9 +12,11 @@ TG_GATEWAY_WORKTREES="${MY_WORKFLOWS_TG_GATEWAY_WORKTREES:-/home/zhanxp/worktree
 STATE_DIR=""
 OMX_DIR=""
 CLAUDE_HANDOFFS_DIR=""
+CODEX_HANDOFFS_DIR=""
 LAUNCHERS_DIR=""
 OBSERVERS_DIR=""
 INTEGRATION_CANDIDATES_DIR=""
+CODEX_TASK_QUEUE_LOGS_DIR=""
 
 # 默认值
 DEFAULT_CC_WORKERS=("cc3" "cc4" "cc5" "cc6" "cc7" "cc8" "cc9" "cc10")
@@ -92,16 +94,25 @@ die() {
 }
 
 init_directories() {
+  local command="${1:-}"
   if [[ -z "${STATE_DIR:-}" ]]; then
     STATE_DIR="${TG_GATEWAY_DIR}/.omx"
   fi
   OMX_DIR="${STATE_DIR}"
   CLAUDE_HANDOFFS_DIR="${OMX_DIR}/claude-handoffs"
+  CODEX_HANDOFFS_DIR="${OMX_DIR}/codex-handoffs"
   LAUNCHERS_DIR="${OMX_DIR}/codex-launchers"
   OBSERVERS_DIR="${OMX_DIR}/observers"
   INTEGRATION_CANDIDATES_DIR="${OMX_DIR}/integration-candidates"
+  CODEX_TASK_QUEUE_LOGS_DIR="${OMX_DIR}/codex-task-queue/logs"
 
-  for dir in "${OMX_DIR}" "${CLAUDE_HANDOFFS_DIR}" "${LAUNCHERS_DIR}" "${OBSERVERS_DIR}" "${INTEGRATION_CANDIDATES_DIR}"; do
+  case "${command}" in
+    help|plan|select-cc-worker|select-cx-worker|status)
+      return 0
+      ;;
+  esac
+
+  for dir in "${OMX_DIR}" "${CLAUDE_HANDOFFS_DIR}" "${CODEX_HANDOFFS_DIR}" "${LAUNCHERS_DIR}" "${OBSERVERS_DIR}" "${INTEGRATION_CANDIDATES_DIR}" "${CODEX_TASK_QUEUE_LOGS_DIR}"; do
     if [[ ! -d "${dir}" ]]; then
       mkdir -p "${dir}"
     fi
@@ -116,6 +127,19 @@ array_contains() {
     [[ "${item}" == "${needle}" ]] && return 0
   done
   return 1
+}
+
+join_by_comma() {
+  local joined=""
+  local item
+  for item in "$@"; do
+    [[ -n "${item}" ]] || continue
+    if [[ -n "${joined}" ]]; then
+      joined+=","
+    fi
+    joined+="${item}"
+  done
+  printf '%s\n' "${joined}"
 }
 
 is_cc_worker_name() {
@@ -470,85 +494,239 @@ is_git_worktree_clean() {
   [[ -z "${status}" ]]
 }
 
-has_tmux_session() {
-  if [[ "${IGNORE_RUNTIME_BUSY}" == "1" ]]; then
-    return 1
+AV_WORKER=""
+AV_FAMILY=""
+AV_AVAILABLE="false"
+AV_DECISION="skip"
+AV_REASONS_TEXT="none"
+AV_WORKTREE=""
+AV_DIRTY_COUNT=0
+AV_TMUX_SESSIONS_TEXT="none"
+AV_PANE_CWD_HITS_TEXT="none"
+AV_DB_ACTIVE_ROWS=0
+AV_DB_STALE_ROWS=0
+
+worker_family() {
+  local worker="$1"
+  if is_cc_worker_name "${worker}"; then
+    printf 'cc\n'
+  elif is_cx_worker_name "${worker}"; then
+    printf 'cx\n'
+  else
+    printf 'unknown\n'
   fi
-  local pattern="$1"
-  tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -q "${pattern}"
 }
 
-has_active_db_task() {
-  if [[ "${IGNORE_RUNTIME_BUSY}" == "1" ]]; then
-    return 1
+worker_tmux_prefix() {
+  local family="$1"
+  case "${family}" in
+    cc) printf 'claude\n' ;;
+    cx) printf 'codex\n' ;;
+    *) printf 'unknown\n' ;;
+  esac
+}
+
+process_is_alive() {
+  local pid="$1"
+  [[ "${pid}" =~ ^[0-9]+$ ]] || return 1
+  [[ "${pid}" -gt 0 ]] || return 1
+  kill -0 "${pid}" 2>/dev/null
+}
+
+git_dirty_count() {
+  local worktree="$1"
+  local status
+  status="$(git -C "${worktree}" status --short 2>/dev/null)" || {
+    printf '1\n'
+    return 0
+  }
+  if [[ -z "${status}" ]]; then
+    printf '0\n'
+  else
+    printf '%s\n' "${status}" | grep -c '^'
   fi
+}
+
+collect_worker_tmux_sessions() {
   local worker="$1"
-  local db_path="${TG_GATEWAY_DIR}/data/gateway.sqlite"
-  if [[ ! -f "${db_path}" ]]; then
-    return 1
+  local family="$2"
+  if [[ "${IGNORE_RUNTIME_BUSY}" == "1" ]]; then
+    return 0
   fi
-  sqlite3 "${db_path}" \
-    "SELECT 1 FROM tasks WHERE status IN ('running', 'queued', 'planned', 'pending', 'processing') AND (worker = '${worker}' OR recommended_agent = '${worker}') LIMIT 1;" \
-    2>/dev/null | grep -q 1
+
+  local prefix
+  prefix="$(worker_tmux_prefix "${family}")"
+  [[ "${prefix}" != "unknown" ]] || return 0
+
+  local session
+  while IFS= read -r session; do
+    [[ -n "${session}" ]] || continue
+    case "${session}" in
+      "${prefix}-${worker}-"*)
+        printf '%s\n' "${session}"
+        ;;
+    esac
+  done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null || true)
+}
+
+collect_worker_pane_cwd_hits() {
+  local worktree="$1"
+  if [[ "${IGNORE_RUNTIME_BUSY}" == "1" ]]; then
+    return 0
+  fi
+
+  local tmux_format
+  tmux_format=$'#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{pane_pid}'
+  local session pane_path pane_command pane_pid
+  while IFS=$'\t' read -r session pane_path pane_command pane_pid; do
+    [[ -n "${pane_path}" ]] || continue
+    case "${pane_path}" in
+      "${worktree}"|"${worktree}/"*)
+        if [[ -n "${pane_pid:-}" ]] && [[ "${pane_pid}" =~ ^[0-9]+$ ]] && ! process_is_alive "${pane_pid}"; then
+          continue
+        fi
+        printf '%s:%s:%s:%s\n' "${session:-unknown}" "${pane_path}" "${pane_command:-unknown}" "${pane_pid:-unknown}"
+        ;;
+    esac
+  done < <(tmux list-panes -a -F "${tmux_format}" 2>/dev/null || true)
+}
+
+collect_worker_db_counts() {
+  local worker="$1"
+  if [[ "${IGNORE_RUNTIME_BUSY}" == "1" ]]; then
+    printf '0 0\n'
+    return 0
+  fi
+
+  local db_path="${TG_GATEWAY_DIR}/data/gateway.sqlite"
+  if [[ ! -f "${db_path}" ]] || ! command -v sqlite3 >/dev/null 2>&1; then
+    printf '0 0\n'
+    return 0
+  fi
+
+  local active=0
+  local stale=0
+  local id status process_id
+  while IFS=$'\t' read -r id status process_id; do
+    [[ -n "${id:-}" ]] || continue
+    if [[ -z "${process_id:-}" || "${process_id}" == "0" ]]; then
+      active=$((active + 1))
+    elif process_is_alive "${process_id}"; then
+      active=$((active + 1))
+    else
+      stale=$((stale + 1))
+    fi
+  done < <(
+    sqlite3 -separator $'\t' "${db_path}" \
+      "SELECT id, status, COALESCE(process_id, '') FROM tasks WHERE status IN ('running', 'queued', 'planned', 'pending', 'processing') AND (worker = '${worker}' OR recommended_agent = '${worker}') ORDER BY created_at DESC LIMIT 50;" \
+      2>/dev/null || true
+  )
+
+  printf '%s %s\n' "${active}" "${stale}"
+}
+
+collect_worker_availability() {
+  local worker="$1"
+  AV_WORKER="${worker}"
+  AV_FAMILY="$(worker_family "${worker}")"
+  AV_AVAILABLE="false"
+  AV_DECISION="skip"
+  AV_WORKTREE="${TG_GATEWAY_WORKTREES}/${worker}"
+  AV_DIRTY_COUNT=0
+  AV_TMUX_SESSIONS_TEXT="none"
+  AV_PANE_CWD_HITS_TEXT="none"
+  AV_DB_ACTIVE_ROWS=0
+  AV_DB_STALE_ROWS=0
+
+  local -a reasons=()
+  local has_blocking_reason=0
+
+  if [[ "${AV_FAMILY}" == "unknown" ]]; then
+    reasons+=("invalid-worker")
+    has_blocking_reason=1
+  fi
+
+  if [[ ! -d "${AV_WORKTREE}" ]]; then
+    reasons+=("missing-worktree")
+    has_blocking_reason=1
+  else
+    AV_DIRTY_COUNT="$(git_dirty_count "${AV_WORKTREE}")"
+    if [[ "${AV_DIRTY_COUNT}" -gt 0 ]]; then
+      reasons+=("dirty")
+      has_blocking_reason=1
+    fi
+  fi
+
+  local tmux_sessions
+  tmux_sessions="$(collect_worker_tmux_sessions "${worker}" "${AV_FAMILY}")"
+  if [[ -n "${tmux_sessions}" ]]; then
+    AV_TMUX_SESSIONS_TEXT="$(printf '%s\n' "${tmux_sessions}" | paste -sd, -)"
+    reasons+=("busy-tmux-session")
+    has_blocking_reason=1
+  fi
+
+  if [[ -d "${AV_WORKTREE}" ]]; then
+    local pane_hits
+    pane_hits="$(collect_worker_pane_cwd_hits "${AV_WORKTREE}")"
+    if [[ -n "${pane_hits}" ]]; then
+      AV_PANE_CWD_HITS_TEXT="$(printf '%s\n' "${pane_hits}" | paste -sd, -)"
+      reasons+=("busy-pane-cwd")
+      has_blocking_reason=1
+    fi
+  fi
+
+  local db_counts
+  db_counts="$(collect_worker_db_counts "${worker}")"
+  read -r AV_DB_ACTIVE_ROWS AV_DB_STALE_ROWS <<< "${db_counts}"
+  if [[ "${AV_DB_ACTIVE_ROWS}" -gt 0 ]]; then
+    reasons+=("busy-db-active")
+    has_blocking_reason=1
+  fi
+  if [[ "${AV_DB_STALE_ROWS}" -gt 0 ]]; then
+    reasons+=("db-stale-review")
+  fi
+
+  if [[ "${#reasons[@]}" -eq 0 ]]; then
+    AV_REASONS_TEXT="none"
+  else
+    AV_REASONS_TEXT="$(join_by_comma "${reasons[@]}")"
+  fi
+
+  if [[ "${has_blocking_reason}" -eq 0 ]]; then
+    AV_AVAILABLE="true"
+    if [[ "${AV_DB_STALE_ROWS}" -gt 0 ]]; then
+      AV_DECISION="available-db-stale-review"
+    else
+      AV_DECISION="available"
+    fi
+  fi
+}
+
+render_worker_availability() {
+  printf 'worker=%s family=%s available=%s decision=%s reasons=%s worktree=%s dirtyCount=%s tmuxSessions=%s paneCwdHits=%s dbActiveRows=%s dbStaleRows=%s\n' \
+    "${AV_WORKER}" \
+    "${AV_FAMILY}" \
+    "${AV_AVAILABLE}" \
+    "${AV_DECISION}" \
+    "${AV_REASONS_TEXT}" \
+    "${AV_WORKTREE}" \
+    "${AV_DIRTY_COUNT}" \
+    "${AV_TMUX_SESSIONS_TEXT}" \
+    "${AV_PANE_CWD_HITS_TEXT}" \
+    "${AV_DB_ACTIVE_ROWS}" \
+    "${AV_DB_STALE_ROWS}"
 }
 
 is_cc_worker_available() {
   local worker="$1"
-  local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
-
-  if ! is_cc_worker_name "${worker}"; then
-    vlog "Worker ${worker} is not a cc worker"
-    return 1
-  fi
-
-  if [[ ! -d "${worktree}" ]]; then
-    vlog "Worker ${worker} missing worktree: ${worktree}"
-    return 1
-  fi
-
-  if ! is_git_worktree_clean "${worktree}"; then
-    vlog "Worker ${worker} worktree is dirty"
-    return 1
-  fi
-
-  if has_tmux_session "^claude-${worker}-"; then
-    vlog "Worker ${worker} has active tmux session"
-    return 1
-  fi
-
-  if has_active_db_task "${worker}"; then
-    vlog "Worker ${worker} has active DB task"
-    return 1
-  fi
-
-  return 0
+  collect_worker_availability "${worker}"
+  [[ "${AV_FAMILY}" == "cc" && "${AV_AVAILABLE}" == "true" ]]
 }
 
 is_cx_worker_available() {
   local worker="$1"
-  local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
-
-  if ! is_cx_worker_name "${worker}"; then
-    vlog "Worker ${worker} is not a cx worker"
-    return 1
-  fi
-
-  if [[ ! -d "${worktree}" ]]; then
-    vlog "CX Worker ${worker} missing worktree: ${worktree}"
-    return 1
-  fi
-
-  if ! is_git_worktree_clean "${worktree}"; then
-    vlog "CX Worker ${worker} worktree is dirty"
-    return 1
-  fi
-
-  if has_tmux_session "^codex-${worker}-"; then
-    vlog "CX Worker ${worker} has active tmux session"
-    return 1
-  fi
-
-  return 0
+  collect_worker_availability "${worker}"
+  [[ "${AV_FAMILY}" == "cx" && "${AV_AVAILABLE}" == "true" ]]
 }
 
 select_available_cc_worker() {
@@ -557,17 +735,25 @@ select_available_cc_worker() {
     if ! is_cc_worker_name "${requested_worker}"; then
       die "Requested worker must be a cc worker: ${requested_worker}"
     fi
-    if is_cc_worker_available "${requested_worker}"; then
+    collect_worker_availability "${requested_worker}"
+    if [[ "${VERBOSE}" -eq 1 ]]; then
+      render_worker_availability >&2
+    fi
+    if [[ "${AV_AVAILABLE}" == "true" ]]; then
       printf '%s\n' "${requested_worker}"
       return 0
     else
-      warn "Requested worker ${requested_worker} is not available"
+      warn "Requested worker ${requested_worker} is not available: ${AV_REASONS_TEXT}"
       return 1
     fi
   fi
 
   for worker in "${DEFAULT_CC_WORKERS[@]}"; do
-    if is_cc_worker_available "${worker}"; then
+    collect_worker_availability "${worker}"
+    if [[ "${VERBOSE}" -eq 1 ]]; then
+      render_worker_availability >&2
+    fi
+    if [[ "${AV_AVAILABLE}" == "true" ]]; then
       printf '%s\n' "${worker}"
       return 0
     fi
@@ -585,17 +771,25 @@ select_available_cx_repair_worker() {
     if ! is_cx_repair_worker_name "${requested_worker}"; then
       die "Requested CX repair worker must be one of: ${DEFAULT_CX_REPAIR_WORKERS[*]}"
     fi
-    if is_cx_worker_available "${requested_worker}"; then
+    collect_worker_availability "${requested_worker}"
+    if [[ "${VERBOSE}" -eq 1 ]]; then
+      render_worker_availability >&2
+    fi
+    if [[ "${AV_AVAILABLE}" == "true" ]]; then
       printf '%s\n' "${requested_worker}"
       return 0
     else
-      warn "Requested CX worker ${requested_worker} is not available"
+      warn "Requested CX worker ${requested_worker} is not available: ${AV_REASONS_TEXT}"
       return 1
     fi
   fi
 
   for worker in "${DEFAULT_CX_REPAIR_WORKERS[@]}"; do
-    if is_cx_worker_available "${worker}"; then
+    collect_worker_availability "${worker}"
+    if [[ "${VERBOSE}" -eq 1 ]]; then
+      render_worker_availability >&2
+    fi
+    if [[ "${AV_AVAILABLE}" == "true" ]]; then
       printf '%s\n' "${worker}"
       return 0
     fi
@@ -615,11 +809,15 @@ select_available_cx_review_worker() {
   if [[ "${requested_worker}" != "${DEFAULT_CX_REVIEW_WORKER}" ]]; then
     die "Review worker is fixed to ${DEFAULT_CX_REVIEW_WORKER}"
   fi
-  if is_cx_worker_available "${requested_worker}"; then
+  collect_worker_availability "${requested_worker}"
+  if [[ "${VERBOSE}" -eq 1 ]]; then
+    render_worker_availability >&2
+  fi
+  if [[ "${AV_AVAILABLE}" == "true" ]]; then
     printf '%s\n' "${requested_worker}"
     return 0
   fi
-  warn "Review worker ${requested_worker} is not available"
+  warn "Review worker ${requested_worker} is not available: ${AV_REASONS_TEXT}"
   return 1
 }
 
@@ -940,7 +1138,7 @@ cmd_orchestrate() {
     observer_worker="${DEFAULT_OBSERVER_WORKER}"
     HAS_OBSERVER=1
     log "Observer worker available: ${observer_worker}"
-    local observer_prompt_file="${OBSERVERS_DIR}/${observer_worker}-${task_slug}-observer.md"
+    local observer_prompt_file="${CLAUDE_HANDOFFS_DIR}/${observer_worker}-${task_slug}-observer.md"
     local observer_prompt
     observer_prompt="$(render_observer_prompt "${task_slug}" "${observer_worker}" "${SELECTED_CC_WORKER}" "${source_prompt_file}")"
     write_prompt_file "${observer_prompt_file}" "${observer_prompt}"
@@ -973,7 +1171,7 @@ cmd_repair() {
   SELECTED_CX_REPAIR_WORKER="${worker}"
   log "Selected CX repair worker: ${SELECTED_CX_REPAIR_WORKER}"
 
-  local handoff_file="${CLAUDE_HANDOFFS_DIR}/${SELECTED_CX_REPAIR_WORKER}-${task_slug}-repair.md"
+  local handoff_file="${CODEX_HANDOFFS_DIR}/${SELECTED_CX_REPAIR_WORKER}-${task_slug}-repair.md"
   local handoff_prompt
   handoff_prompt="$(render_cx_repair_prompt "${task_slug}" "${SELECTED_CX_REPAIR_WORKER}" "${source_prompt_file}")"
   write_prompt_file "${handoff_file}" "${handoff_prompt}"
@@ -998,7 +1196,7 @@ cmd_review() {
   SELECTED_CX_REVIEW_WORKER="${worker}"
   log "Selected CX review worker: ${SELECTED_CX_REVIEW_WORKER}"
 
-  local handoff_file="${CLAUDE_HANDOFFS_DIR}/${SELECTED_CX_REVIEW_WORKER}-${task_slug}-review.md"
+  local handoff_file="${CODEX_HANDOFFS_DIR}/${SELECTED_CX_REVIEW_WORKER}-${task_slug}-review.md"
   local handoff_prompt
   handoff_prompt="$(render_cx_review_prompt "${task_slug}" "${SELECTED_CX_REVIEW_WORKER}" "${source_prompt_file}")"
   write_prompt_file "${handoff_file}" "${handoff_prompt}"
@@ -1065,40 +1263,18 @@ cmd_status() {
   log_phase "工作流状态"
 
   log "TG Gateway worktree availability:"
-  for worker in cc2 cc3 cc4 cc5 cx2 cx3 cx4 cx5; do
-    local worktree="${TG_GATEWAY_WORKTREES}/${worker}"
+  local -a workers=("${DEFAULT_OBSERVER_WORKER}" "${DEFAULT_CC_WORKERS[@]}" "${DEFAULT_CX_REVIEW_WORKER}" "${DEFAULT_CX_REPAIR_WORKERS[@]}")
+  local worker
+  for worker in "${workers[@]}"; do
+    collect_worker_availability "${worker}"
     local status_symbol="✓"
-    local details=()
-
-    if [[ ! -d "${worktree}" ]]; then
+    if [[ "${AV_AVAILABLE}" != "true" ]]; then
       status_symbol="✗"
-      details+=("missing")
-    else
-      if ! is_git_worktree_clean "${worktree}"; then
-        status_symbol="✗"
-        details+=("dirty")
-      fi
-    fi
-
-    if [[ "${worker}" =~ ^cc ]]; then
-      if has_tmux_session "^claude-${worker}-"; then
-        status_symbol="✗"
-        details+=("busy-tmux")
-      fi
-      if has_active_db_task "${worker}"; then
-        status_symbol="✗"
-        details+=("busy-db")
-      fi
-    else
-      if has_tmux_session "^codex-${worker}-"; then
-        status_symbol="✗"
-        details+=("busy-tmux")
-      fi
     fi
 
     printf '  %s %s' "${status_symbol}" "${worker}"
-    if [[ "${#details[@]}" -gt 0 ]]; then
-      printf ' (%s)' "${details[*]}"
+    if [[ "${AV_REASONS_TEXT}" != "none" ]]; then
+      printf ' (%s)' "${AV_REASONS_TEXT}"
     fi
     printf '\n'
   done
@@ -1172,7 +1348,7 @@ main() {
     die "Command is required"
   fi
 
-  init_directories
+  init_directories "${command}"
 
   case "${command}" in
     plan)

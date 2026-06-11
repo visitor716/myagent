@@ -18,6 +18,7 @@ ORIGINAL_PATH="${PATH}"
 FAKE_TMUX_DIR=""
 FAKE_TMUX_LOG=""
 FAKE_TMUX_SESSIONS=""
+FAKE_TMUX_PANES=""
 
 log_test() {
   printf '\n[TEST] %s\n' "$*"
@@ -131,6 +132,9 @@ Changed Files
 Verification
 Token Usage}"
     ;;
+  list-panes)
+    printf '%s\n' "${MY_WORKFLOWS_FAKE_TMUX_PANES:-}"
+    ;;
   load-buffer|paste-buffer|send-keys|list-sessions)
     if [[ "${1:-}" == "list-sessions" ]]; then
       printf '%s\n' "${MY_WORKFLOWS_FAKE_TMUX_SESSIONS:-}"
@@ -145,14 +149,17 @@ EOF_TMUX
 
 setup_fake_tmux() {
   local sessions="$1"
+  local panes="${2:-}"
   FAKE_TMUX_DIR="${TEST_TMP_ROOT}/fake-bin"
   FAKE_TMUX_LOG="${TEST_TMP_ROOT}/fake-tmux.log"
   FAKE_TMUX_SESSIONS="${sessions}"
+  FAKE_TMUX_PANES="${panes}"
   : > "${FAKE_TMUX_LOG}"
   write_fake_tmux "${FAKE_TMUX_DIR}"
   export PATH="${FAKE_TMUX_DIR}:${ORIGINAL_PATH}"
   export MY_WORKFLOWS_FAKE_TMUX_LOG="${FAKE_TMUX_LOG}"
   export MY_WORKFLOWS_FAKE_TMUX_SESSIONS="${FAKE_TMUX_SESSIONS}"
+  export MY_WORKFLOWS_FAKE_TMUX_PANES="${FAKE_TMUX_PANES}"
   export MY_WORKFLOWS_FAKE_TMUX_CAPTURE='● Summary
 Changed Files
 Verification
@@ -237,7 +244,7 @@ setup_fixture() {
   FIXTURE_SCRIPTS="${TEST_TMP_ROOT}/scripts"
   FIXTURE_LAUNCH_LOG="${TEST_TMP_ROOT}/launch.log"
 
-  mkdir -p "${FIXTURE_TG_DIR}" "${FIXTURE_WORKTREES}" "${FIXTURE_SCRIPTS}"
+  mkdir -p "${FIXTURE_TG_DIR}/data" "${FIXTURE_WORKTREES}" "${FIXTURE_SCRIPTS}"
   : > "${FIXTURE_LAUNCH_LOG}"
 
   local worker
@@ -271,12 +278,38 @@ cleanup_fixture() {
   unset MY_WORKFLOWS_IGNORE_RUNTIME_BUSY
   unset MY_WORKFLOWS_FAKE_TMUX_LOG
   unset MY_WORKFLOWS_FAKE_TMUX_SESSIONS
+  unset MY_WORKFLOWS_FAKE_TMUX_PANES
   unset MY_WORKFLOWS_FAKE_TMUX_CAPTURE
   unset MY_WORKFLOWS_OBSERVER_REPORT_SEND_LIMIT_BYTES
   PATH="${ORIGINAL_PATH}"
   FAKE_TMUX_DIR=""
   FAKE_TMUX_LOG=""
   FAKE_TMUX_SESSIONS=""
+  FAKE_TMUX_PANES=""
+}
+
+enable_runtime_checks() {
+  export MY_WORKFLOWS_IGNORE_RUNTIME_BUSY=0
+}
+
+init_gateway_db() {
+  sqlite3 "${FIXTURE_TG_DIR}/data/gateway.sqlite" \
+    "CREATE TABLE tasks (id TEXT PRIMARY KEY, status TEXT, worker TEXT, recommended_agent TEXT, process_id INTEGER, created_at TEXT);"
+}
+
+insert_task_row() {
+  local id="$1"
+  local worker="$2"
+  local recommended_agent="$3"
+  local status="$4"
+  local process_id="${5:-}"
+  local process_sql="NULL"
+  if [[ -n "${process_id}" ]]; then
+    process_sql="${process_id}"
+  fi
+
+  sqlite3 "${FIXTURE_TG_DIR}/data/gateway.sqlite" \
+    "INSERT INTO tasks (id, status, worker, recommended_agent, process_id, created_at) VALUES ('${id}', '${status}', '${worker}', '${recommended_agent}', ${process_sql}, '2026-01-01T00:00:00Z');"
 }
 
 make_prompt() {
@@ -346,6 +379,11 @@ test_status_command_returns_zero() {
   else
     fail "status should exit zero in fixture, got ${exit_code}"
   fi
+  if [[ ! -e "${FIXTURE_TG_DIR}/.omx" ]]; then
+    pass "status does not create .omx artifacts"
+  else
+    fail "status should remain read-only and not create .omx artifacts"
+  fi
 }
 
 test_missing_prompt_file_fails_even_dry_run() {
@@ -388,11 +426,16 @@ test_orchestrate_writes_handoffs_and_launches_workers() {
   fi
 
   local cc_handoff="${FIXTURE_TG_DIR}/.omx/claude-handoffs/cc3-demo.md"
-  local observer_handoff="${FIXTURE_TG_DIR}/.omx/observers/cc2-demo-observer.md"
+  local observer_handoff="${FIXTURE_TG_DIR}/.omx/claude-handoffs/cc2-demo-observer.md"
   assert_file_contains "${cc_handoff}" "Implement the requested demo change" "orchestrate writes implementation handoff"
   assert_file_contains "${observer_handoff}" "Read-Only Observer Handoff" "orchestrate writes observer handoff"
   assert_file_contains "${observer_handoff}" "observe-group --task demo --workers cc3 --target-pane cx2:0.0" "observer handoff calls observe-group"
   assert_file_contains "${observer_handoff}" ".omx/observers/demo.result.md" "observer handoff records group result path"
+  if [[ ! -e "${FIXTURE_TG_DIR}/plans/cc3-demo.md" && ! -e "${FIXTURE_TG_DIR}/plans/cc2-demo-observer.md" ]]; then
+    pass "orchestrate does not write prompts to plans"
+  else
+    fail "orchestrate should not write prompts to plans"
+  fi
   assert_file_contains "${FIXTURE_LAUNCH_LOG}" "launch_claude_worker_terminal.sh|worktree=${FIXTURE_WORKTREES}/cc3|task=cc3-demo" "orchestrate launches cc3"
   assert_file_contains "${FIXTURE_LAUNCH_LOG}" "launch_claude_worker_terminal.sh|worktree=${FIXTURE_WORKTREES}/cc2|task=cc2-demo-observer" "orchestrate launches cc2 observer"
   cleanup_fixture
@@ -415,9 +458,139 @@ test_verbose_does_not_pollute_worker_selection() {
   else
     fail "verbose dry-run should exit zero: ${output}"
   fi
-  assert_contains "${output}" "Worker cc3 worktree is dirty" "verbose reports skipped dirty worker"
+  assert_contains "${output}" "worker=cc3" "verbose reports skipped dirty worker"
+  assert_contains "${output}" "reasons=dirty" "verbose reports dirty reason"
   assert_contains "${output}" "CC Worker: cc4" "verbose selection remains cc4"
   assert_contains "${output}" "--worktree ${FIXTURE_WORKTREES}/cc4" "dry-run launcher command uses clean cc4 worktree"
+  cleanup_fixture
+}
+
+test_select_cc_skips_live_db_and_allows_stale_db() {
+  log_test "select-cc-worker uses DB process liveness"
+
+  setup_fixture
+  enable_runtime_checks
+  setup_fake_tmux ""
+  init_gateway_db
+  insert_task_row live-cc3 cc3 "" running "$$"
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" select-cc-worker --verbose 2>&1)" || exit_code="$?"
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "select-cc-worker skips live DB row and exits zero"
+  else
+    fail "select-cc-worker should skip live DB row: ${output}"
+  fi
+  assert_contains "${output}" "worker=cc3" "verbose includes cc3 availability"
+  assert_contains "${output}" "reasons=busy-db-active" "live DB row blocks cc3"
+  assert_contains "${output}" "Selected CC worker: cc4" "live DB row advances to cc4"
+  cleanup_fixture
+
+  setup_fixture
+  enable_runtime_checks
+  setup_fake_tmux ""
+  init_gateway_db
+  insert_task_row stale-cc3 cc3 "" running 999999
+
+  exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" select-cc-worker --verbose 2>&1)" || exit_code="$?"
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "select-cc-worker does not treat stale DB row as live busy"
+  else
+    fail "select-cc-worker should accept stale DB row for review: ${output}"
+  fi
+  assert_contains "${output}" "worker=cc3" "verbose includes stale cc3 availability"
+  assert_contains "${output}" "available=true" "stale DB row remains selectable"
+  assert_contains "${output}" "reasons=db-stale-review" "stale DB row is review reason"
+  assert_contains "${output}" "Selected CC worker: cc3" "stale DB row does not skip cc3"
+  cleanup_fixture
+}
+
+test_select_workers_skip_family_tmux_sessions() {
+  log_test "select workers skip family tmux sessions"
+
+  setup_fixture
+  enable_runtime_checks
+  setup_fake_tmux $'claude-cc3-demo\ncodex-cx3-demo'
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" select-cc-worker --verbose 2>&1)" || exit_code="$?"
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "select-cc-worker skips existing Claude session"
+  else
+    fail "select-cc-worker should skip existing Claude session: ${output}"
+  fi
+  assert_contains "${output}" "worker=cc3" "cc verbose includes cc3"
+  assert_contains "${output}" "reasons=busy-tmux-session" "Claude session blocks cc3"
+  assert_contains "${output}" "Selected CC worker: cc4" "cc session advances to cc4"
+
+  exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" select-cx-worker --verbose 2>&1)" || exit_code="$?"
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "select-cx-worker skips existing Codex session"
+  else
+    fail "select-cx-worker should skip existing Codex session: ${output}"
+  fi
+  assert_contains "${output}" "worker=cx3" "cx verbose includes cx3"
+  assert_contains "${output}" "reasons=busy-tmux-session" "Codex session blocks cx3"
+  assert_contains "${output}" "Selected CX repair worker: cx4" "cx session advances to cx4"
+  cleanup_fixture
+}
+
+test_select_cx_skips_db_active_and_pane_cwd() {
+  log_test "select-cx-worker uses DB and pane cwd busy checks"
+
+  setup_fixture
+  enable_runtime_checks
+  local panes
+  panes="$(printf 'codex-free\t%s/cx4\tbash\t%s\n' "${FIXTURE_WORKTREES}" "$$")"
+  setup_fake_tmux "" "${panes}"
+  init_gateway_db
+  insert_task_row live-cx3 cx3 "" running "$$"
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" select-cx-worker --verbose 2>&1)" || exit_code="$?"
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "select-cx-worker skips DB-active and pane-cwd workers"
+  else
+    fail "select-cx-worker should skip busy cx workers: ${output}"
+  fi
+  assert_contains "${output}" "worker=cx3" "verbose includes cx3 availability"
+  assert_contains "${output}" "reasons=busy-db-active" "live DB row blocks cx3"
+  assert_contains "${output}" "worker=cx4" "verbose includes cx4 availability"
+  assert_contains "${output}" "busy-pane-cwd" "pane cwd blocks cx4"
+  assert_contains "${output}" "Selected CX repair worker: cx5" "busy cx3/cx4 advances to cx5"
+  cleanup_fixture
+}
+
+test_status_uses_availability_helper_for_full_worker_pool() {
+  log_test "status uses shared availability for full worker pool"
+
+  setup_fixture
+  enable_runtime_checks
+  printf 'dirty\n' > "${FIXTURE_WORKTREES}/cc6/dirty.txt"
+  local panes
+  panes="$(printf 'codex-cx2-fixed\t%s/cx2\tbash\t%s\n' "${FIXTURE_WORKTREES}" "$$")"
+  setup_fake_tmux $'claude-cc7-demo' "${panes}"
+  init_gateway_db
+  insert_task_row stale-cc8 cc8 "" running 999999
+
+  local output
+  local exit_code=0
+  output="$("${MY_WORKFLOWS_SH}" status 2>&1)" || exit_code="$?"
+  if [[ "${exit_code}" -eq 0 ]]; then
+    pass "status exits zero with shared availability"
+  else
+    fail "status should exit zero: ${output}"
+  fi
+  assert_contains "${output}" "cc10" "status covers cc10"
+  assert_contains "${output}" "cc6 (dirty)" "status reports dirty reason"
+  assert_contains "${output}" "cc7 (busy-tmux-session)" "status reports tmux session reason"
+  assert_contains "${output}" "cc8 (db-stale-review)" "status reports stale DB review reason"
+  assert_contains "${output}" "cx2 (busy-pane-cwd)" "status detects fixed cx2 pane cwd occupancy"
   cleanup_fixture
 }
 
@@ -455,9 +628,19 @@ test_repair_writes_handoff_and_launches_codex() {
     fail "repair should exit zero: ${output}"
   fi
 
-  local repair_handoff="${FIXTURE_TG_DIR}/.omx/claude-handoffs/cx3-fixdemo-repair.md"
+  local repair_handoff="${FIXTURE_TG_DIR}/.omx/codex-handoffs/cx3-fixdemo-repair.md"
   assert_file_contains "${repair_handoff}" "Codex Repair Handoff" "repair writes cx handoff"
   assert_file_contains "${FIXTURE_LAUNCH_LOG}" "launch_codex_worker_terminal.sh|worktree=${FIXTURE_WORKTREES}/cx3|task=cx3-fixdemo-repair" "repair launches cx3 Codex"
+  if [[ -d "${FIXTURE_TG_DIR}/.omx/codex-task-queue/logs" ]]; then
+    pass "repair prepares codex task queue log directory"
+  else
+    fail "repair should prepare codex task queue log directory"
+  fi
+  if [[ ! -e "${FIXTURE_TG_DIR}/plans/cx3-fixdemo-repair.md" ]]; then
+    pass "repair does not write prompt to plans"
+  else
+    fail "repair should not write prompt to plans"
+  fi
   cleanup_fixture
 }
 
@@ -478,6 +661,7 @@ test_review_launches_cx2_only() {
     fail "review should exit zero: ${output}"
   fi
   assert_file_contains "${FIXTURE_LAUNCH_LOG}" "launch_codex_worker_terminal.sh|worktree=${FIXTURE_WORKTREES}/cx2|task=cx2-reviewdemo-review" "review launches cx2"
+  assert_file_contains "${FIXTURE_LAUNCH_LOG}" "prompt=${FIXTURE_TG_DIR}/.omx/codex-handoffs/cx2-reviewdemo-review.md" "review writes prompt to codex handoffs"
 
   exit_code=0
   output="$("${MY_WORKFLOWS_SH}" review --task reviewdemo2 --prompt-file "${prompt_file}" --worker cx3 2>&1)" || exit_code="$?"
@@ -744,6 +928,10 @@ run_all_tests() {
   test_missing_prompt_file_fails_even_dry_run
   test_orchestrate_writes_handoffs_and_launches_workers
   test_verbose_does_not_pollute_worker_selection
+  test_select_cc_skips_live_db_and_allows_stale_db
+  test_select_workers_skip_family_tmux_sessions
+  test_select_cx_skips_db_active_and_pane_cwd
+  test_status_uses_availability_helper_for_full_worker_pool
   test_select_cx_rejects_cc_worker
   test_repair_writes_handoff_and_launches_codex
   test_review_launches_cx2_only

@@ -21,7 +21,8 @@ notification, and push when requested or explicitly included in the workflow.
    acceptance criteria, and handoff document. `cx1` remains plan-only except
    for planning, prompt, or skill documentation updates.
 2. `cx2` reads the `cx1` plan, decides whether the work is parallel or serial,
-   and creates handoff prompt files in `.omx/claude-handoffs/<task-slug>.md`.
+   and creates handoff prompt files under `.omx/claude-handoffs/` for Claude
+   workers or `.omx/codex-handoffs/` for Codex workers.
 3. `cx2` picks implementation worker(s) using the requested worker or the
    "TG Gateway CC Worker Selection" policy. Keep `cc2` as the default
    read-only observer and default implementation workers to `cc3`-`cc10`.
@@ -55,6 +56,16 @@ notification, and push when requested or explicitly included in the workflow.
 15. Keep the completed worker tmux session open until the branch is merged into
    `master` or explicitly discarded/cleaned; do not close it merely because a
    worker finished or the patch was copied elsewhere.
+
+## Artifact Directory Contract
+
+- Claude worker and observer prompts go under `.omx/claude-handoffs/`.
+- Codex repair/review prompts go under `.omx/codex-handoffs/`.
+- Worker/observer readable result reports go under `.omx/observers/`.
+- Codex queue run logs go under `.omx/codex-task-queue/logs/`.
+- `/home/zhanxp/projects/tg-agent-gateway/plans` is only for readable plan
+  documents. Do not write raw terminal logs, unreadable traces, long tails, or
+  launcher noise there.
 
 ## Parallel/Serial Dispatch Rules
 
@@ -195,6 +206,48 @@ pasted. A pane that still shows `[Pasted text #...]` at an idle prompt is not a
 running reviewer/worker yet; send one `Enter` to that session and re-check the
 pane before reporting the launch as live.
 
+## Unified Worker Availability
+
+`scripts/my_workflows.sh` uses one availability helper for
+`select-cc-worker`, `select-cx-worker`, `review`/`cx2`, and `status`.
+The helper output has these fields:
+
+```text
+worker
+family
+available
+decision
+reasons
+worktree
+dirtyCount
+tmuxSessions
+paneCwdHits
+dbActiveRows
+dbStaleRows
+```
+
+The same checks apply to `cc` and `cx` workers:
+
+- worktree exists and `git status --short` is clean
+- active DB rows in `data/gateway.sqlite`
+- worker-family tmux session (`claude-<ccN>-*` or `codex-<cxN>-*`)
+- any tmux pane whose cwd is inside the worker worktree
+- `process_id` liveness for DB rows; stale DB rows become `db-stale-review`
+  instead of live busy
+
+Blocking reason vocabulary is shared by selection and status:
+`dirty`, `busy-db-active`, `busy-tmux-session`, `busy-pane-cwd`, and
+`missing-worktree`. `db-stale-review` is surfaced for review but does not by
+itself make the worker unavailable.
+
+Use verbose selection when diagnosing skips:
+
+```bash
+scripts/my_workflows.sh select-cc-worker --verbose
+scripts/my_workflows.sh select-cx-worker --verbose
+scripts/my_workflows.sh status
+```
+
 ## TG Gateway CC Worker Selection
 
 Use this policy whenever the target repo is `/home/zhanxp/projects/tg-agent-gateway` and the user asks to "安排 cc", "安排cc", "让 cc 做", or otherwise wants a Claude Code worker.
@@ -222,7 +275,9 @@ Selection rules:
   exists. For generic "安排 cc", skip that worker and continue scanning. For a
   fixed worker request, report the existing session and wait; do not attach,
   resend the prompt, or launch a new task.
-- Treat a worker as busy if `data/gateway.sqlite` has active rows for that worker or if tmux shows a Claude session whose pane cwd is inside that worker worktree. Git cleanliness alone is not enough.
+- Treat a worker as busy if the unified availability helper reports active DB
+  rows, a worker-family tmux session, or any tmux pane cwd inside that worker
+  worktree. Git cleanliness alone is not enough.
 - Before permanently skipping a worker for tmux busy, check whether the tmux pane is a stale completed Claude session whose work is already resolved. Only close that session if the worker branch is merged into `master`, or the worker diff was explicitly discarded and the worktree is clean. If the work was only copied into a non-master checkout or is still waiting for merge/discard, keep the tmux session open and treat the worker as busy.
 
 Availability audit:
@@ -475,6 +530,8 @@ Additional CX workers:
 Selection rules:
 
 - Choose the first worker that is clean, idle, and not blocked by existing `tmux` worker session.
+- Use the unified availability helper for CX workers too; active DB rows,
+  `codex-<cxN>-*` sessions, and pane cwd hits inside a CX worktree are busy.
 - If the user names a specific `cxN`, use that worker only if it is clean, idle, and can be started in a long-lived visible Codex terminal; otherwise report it unavailable instead of falling back to headless execution.
 - Never run multiple repair workers in parallel.
 - Keep the repaired worker command consistent:
@@ -487,7 +544,7 @@ Repair worker launch pattern (visible by default):
 /home/zhanxp/projects/myagent/skills/skills-local/my-workflows/scripts/launch_codex_worker_terminal.sh \
   --worktree /home/zhanxp/worktrees/tg-agent-gateway/<cxN> \
   --task-slug <cxN>-<task-slug>-repair \
-  --prompt-file /home/zhanxp/projects/tg-agent-gateway/.omx/claude-handoffs/<cxN>-<task-slug>-repair.md \
+  --prompt-file /home/zhanxp/projects/tg-agent-gateway/.omx/codex-handoffs/<cxN>-<task-slug>-repair.md \
   --title <cxN> \
   --model "${OMX_DEFAULT_CX_MODEL:-gpt-5.3-codex-spark}" \
   --reasoning-effort "${OMX_DEFAULT_CX_REASONING_EFFORT:-xhigh}"
@@ -523,7 +580,7 @@ If all candidates are unavailable or fail, report blocked rather than creating e
 /home/zhanxp/projects/myagent/skills/skills-local/my-workflows/scripts/launch_codex_worker_terminal.sh \
   --worktree /home/zhanxp/worktrees/tg-agent-gateway/cx2 \
   --task-slug cx2-<task-slug>-review \
-  --prompt-file /home/zhanxp/projects/tg-agent-gateway/.omx/claude-handoffs/cx2-<task-slug>-review.md \
+  --prompt-file /home/zhanxp/projects/tg-agent-gateway/.omx/codex-handoffs/cx2-<task-slug>-review.md \
   --title cx2 \
   --model gpt-5.5 \
   --reasoning-effort "${OMX_DEFAULT_CX_REASONING_EFFORT:-xhigh}"
@@ -544,8 +601,9 @@ If all candidates are unavailable or fail, report blocked rather than creating e
 
 Before launching the terminal:
 
-- Create `.omx/claude-handoffs/` directory if it doesn't exist.
-- Write the handoff prompt to `.omx/claude-handoffs/<task-slug>.md`.
+- Create `.omx/claude-handoffs/` or `.omx/codex-handoffs/` if needed.
+- Write Claude prompts to `.omx/claude-handoffs/<task-slug>.md` and Codex
+  prompts to `.omx/codex-handoffs/<task-slug>.md`.
 - Generate a clean task slug from the task description (lowercase, alphanumeric + hyphens only).
 - The launcher starts Claude and pastes the prompt into the tmux pane.
 - Only when launched with `--compact`, it appends a completion marker
