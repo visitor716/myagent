@@ -570,7 +570,14 @@ if [[ "$TARGET_SIDE" == "all" ]]; then
   for target in "${local_targets[@]}"; do
     echo ""
     log "=== Sync $SOURCE_SIDE -> $target ==="
-    bash "$0" --source "$SOURCE_SIDE" --target "$target" ${DRY_RUN:+--dry-run} ${VERBOSE:+--verbose}
+    child_args=(--source "$SOURCE_SIDE" --target "$target")
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      child_args+=(--dry-run)
+    fi
+    if [[ "$VERBOSE" -eq 1 ]]; then
+      child_args+=(--verbose)
+    fi
+    bash "$0" "${child_args[@]}"
   done
   exit 0
 fi
