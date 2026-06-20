@@ -48,8 +48,9 @@ python3 ~/.codex/skills/daily-report-table/scripts/report_table.py \
 - `输出目录`: `D:\Obsidian\MyNote\03.工作\扬州晶澳F3日报表格自动化`
 - `月度目录`: 按日报日期自动写入输出目录下的 `YYYY-MM` 子目录，例如 `2026-05`
 - `日报笔记`: `YYYY-MM\每天日报.md`（新记录插入表头后第一批数据行，Obsidian 中直接查看）
-- `光斑调试笔记`: `YYYY-MM\光斑调试记录.md`（新记录插入表头后第一批数据行，Obsidian 中直接查看）
+- `光斑调试笔记`: `YYYY-MM\光斑调试记录.md`（新记录追加到表格底部，Obsidian 中直接查看）
 - `Excel 表格文件`: `日报表格-{date}.xlsx`
+  - 当同一天文件已存在时，新的日报行和文件内的光斑行插入到表头下方，旧数据下移。
 - `光斑调试记录 Excel`: `YYYY-MM\光斑调试记录.xlsx`（当月累计追加，不按日期分文件）
 - `企业微信文件`: `企业微信日报-{date}.html`
 - `图表列文件`: `光斑异常图表列-{date}.tsv`

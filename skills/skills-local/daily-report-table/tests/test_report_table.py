@@ -457,7 +457,7 @@ class ReportTableTests(unittest.TestCase):
             metadata['output_dir'] = temp_dir
             # First write
             report_table.persist_outputs(main_rows_batch1, spot_rows_batch1, metadata, 'markdown', 'xlsx', None, False)
-            # Second write: Markdown notes should put the newest rows directly below the header.
+            # Second write: main note prepends, spot note appends.
             report_table.persist_outputs(main_rows_batch2, spot_rows_batch2, metadata, 'markdown', 'xlsx', None, False)
 
             month_dir = Path(temp_dir) / '2026-04'
@@ -469,12 +469,31 @@ class ReportTableTests(unittest.TestCase):
             self.assertEqual(existing_rows[1][1], '4月17号')
             self.assertEqual(existing_rows[1][2], '10A')
 
+            daily_xlsx = month_dir / '日报表格-2026-04-16.xlsx'
+            daily_main_rows = report_table.read_xlsx_data_rows(daily_xlsx)
+            self.assertEqual(len(daily_main_rows), 2)
+            self.assertEqual(daily_main_rows[0][4], '10A')
+            self.assertEqual(daily_main_rows[1][4], '9A')
+
+            daily_spot_rows = report_table.read_xlsx_data_rows(daily_xlsx, 'xl/worksheets/sheet2.xml')
+            self.assertEqual(len(daily_spot_rows), 2)
+            self.assertEqual(daily_spot_rows[0][1], '4月17号')
+            self.assertEqual(daily_spot_rows[0][2], '10A')
+            self.assertEqual(daily_spot_rows[1][1], '4月16号')
+            self.assertEqual(daily_spot_rows[1][2], '9B')
+
             main_note = month_dir / '每天日报.md'
             self.assertTrue(main_note.exists())
             main_lines = main_note.read_text(encoding='utf-8').splitlines()
             self.assertEqual(main_lines[0], '# 每天日报')
             self.assertEqual(main_lines[4], '|  |  |  |  | 10A |  | 工艺调试 | 光斑破洞 | 处理过程3 | 光斑破洞 | 詹香平 |')
             self.assertEqual(main_lines[5], '|  |  |  |  | 9A |  | 工艺调试 | 驱动器报警EE | 处理过程1 | 驱动器报警EE | 詹香平 |')
+
+            spot_note = month_dir / '光斑调试记录.md'
+            self.assertTrue(spot_note.exists())
+            spot_lines = spot_note.read_text(encoding='utf-8').splitlines()
+            self.assertEqual(spot_lines[4], '| F3 | 4月16号 | 9B | AC | 光斑破洞 | 处理过程2 | 詹香平 |  |')
+            self.assertEqual(spot_lines[5], '| F3 | 4月17号 | 10A | BD | 能量偏移 | 处理过程3 | 詹香平 |  |')
 
     def test_prepend_rows_handles_markdown_header_spacing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -535,7 +554,7 @@ class ReportTableTests(unittest.TestCase):
             self.assertIn('<alignment horizontal="center" vertical="center" wrapText="1"/>', styles_xml)
             self.assertIn('<c r="A2" s="1" t="inlineStr"><is><t>2026/4/16</t></is></c>', sheet_xml)
             self.assertIn('<c r="B2" s="1" t="inlineStr"><is><t>罗威组</t></is></c>', sheet_xml)
-            self.assertIn('已生成 Excel 表格:', '\n'.join(messages))
+            self.assertIn('已追加/更新 Excel 表格:', '\n'.join(messages))
 
     def test_chart_copy_outputs_are_written(self) -> None:
         metadata = {

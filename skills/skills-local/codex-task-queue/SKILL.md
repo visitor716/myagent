@@ -71,6 +71,14 @@ Each task is a markdown file with metadata and the original requirement. The scr
 - If `running/` contains a task, `next` refuses to inject another task unless `--force-next` is passed.
 - `/compact` is sent only after the marker count increases after watcher start or after a queued task is dispatched.
 - For the default `/home/zhanxp/worktrees/tg-agent-gateway/cx1` worktree, queued prompts tell Codex to `cd` into that worktree, check `git status --short`, follow `AGENTS.md`, avoid full diffs/long logs in final output, and end with the unique marker.
+- Before dispatching into an existing Codex pane, inspect it. If it is in Plan
+  mode, contains an old confirmation prompt, or has non-empty typed input, use a
+  fresh tmux Codex session instead of pasting over the old state.
+- After `next`, verify the task actually started. A pane showing only
+  `[Pasted Content ...]` or `Create a plan?` means the Codex TUI is still in
+  paste/edit state. The helper now sends a conservative submit nudge
+  (`Enter`, then only if still stuck, `Esc` + `Enter`), but callers should still
+  confirm output such as `Working`, `Ran`, or the first tool result.
 
 ## Useful Commands
 

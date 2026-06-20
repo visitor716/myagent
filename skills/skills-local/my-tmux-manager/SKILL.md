@@ -27,7 +27,7 @@ Use this skill to inspect and operate tmux-backed work surfaces without broad `p
 - Treat recent terminal output as active work. Process presence alone can be stale, and a quiet pane can still have a child process holding a port.
 - Treat core background services as protected unless the user explicitly targets them: `tg-agent-gateway`, `tg-webapp-tunnel`, `cc-switch-proxy`, and `tg-rescue-bot`.
 - Treat `tg-webapp-serveo` as a protected standby WebApp tunnel on this machine unless the user explicitly says the backup tunnel can be stopped.
-- Treat `gateway` and `myagent` as protected project shell sessions. They are lightweight anchor sessions for quick manual access to `/home/zhanxp/projects/tg-agent-gateway` and `/home/zhanxp/projects/myagent`; preserve them during routine cleanup.
+- Treat `gateway`, `myagent`, and `oa` as protected project shell sessions. They are lightweight anchor sessions for quick manual access to `/home/zhanxp/projects/tg-agent-gateway`, `/home/zhanxp/projects/myagent`, and `/home/zhanxp/projects/oa-fill-assistant`; preserve them during routine cleanup.
 - Treat active attached Codex/Claude sessions and browser/proxy daemons as protected unless explicitly targeted.
 - Treat Codex work sessions such as `codex5`, `codex7`, `codex-myagent`, `codex-cx3-*`, `cx1`, `cx2` and Claude review/worker sessions such as `claude-cc2`..`claude-cc10` (and any `claude-cc*-*` variant) as non-service work surfaces. They may be cleaned when the user asks to keep only required background services; closing the tmux session does not delete worktree files or git diffs (the worktrees under `/home/zhanxp/worktrees/tg-agent-gateway/<lane>` remain intact).
 - A numeric-only session name like `11` is almost always a leftover `tmux new` shell — safe to clean once `capture` confirms no live work.
@@ -43,7 +43,8 @@ bash <skill-dir>/scripts/tmux_process_windows.sh recent
 bash <skill-dir>/scripts/tmux_process_windows.sh classify <target>
 bash <skill-dir>/scripts/tmux_process_windows.sh capture <target> 120
 bash <skill-dir>/scripts/tmux_process_windows.sh children <target>
-bash <skill-dir>/scripts/tmux_process_windows.sh new-codex-session <session> [cwd]
+bash <skill-dir>/scripts/tmux_process_windows.sh new-codex-session <session> [cwd] [--no-open]
+bash <skill-dir>/scripts/tmux_process_windows.sh open-session <session>
 bash <skill-dir>/scripts/tmux_process_windows.sh send-text <target> "npm run build" --enter
 bash <skill-dir>/scripts/tmux_process_windows.sh stop <target>
 ```
@@ -58,7 +59,8 @@ Supported actions:
 - `classify <target>` - print recent output and process tree plus heuristic cleanup notes.
 - `capture <target> [lines]` - print the last lines from a pane without using tmux buffers.
 - `children <target>` - show the pane's root PID and related process group.
-- `new-codex-session <session> [cwd]` - create a detached visible Codex tmux session with window name `codex`. If `cwd` is omitted and `/home/zhanxp/worktrees/tg-agent-gateway/<session>` exists, that worktree is used. Existing sessions are never replaced.
+- `new-codex-session <session> [cwd] [--no-open]` - create a detached visible Codex tmux session with window name `codex`. Automatically opens a Windows terminal window attached to the session (use `--no-open` to skip auto-opening). If `cwd` is omitted and `/home/zhanxp/worktrees/tg-agent-gateway/<session>` exists, that worktree is used. Existing sessions are never replaced (if session exists, opens the window instead).
+- `open-session <session>` - open a Windows terminal window attached to an existing tmux session.
 - `send-text <target> <text> [--enter]` - paste text into a pane, optionally pressing Enter.
 - `send-keys <target> <key...>` - send tmux key names such as `C-c`, `Enter`, or `Escape`.
 - `stop <target> [--kill-after <seconds> --yes]` - send `C-c`; only kills the pane after the delay when `--yes` is provided.
@@ -100,6 +102,7 @@ Rules:
 - Do not create missing worktrees from this skill. If the worktree does not exist, report the missing path and stop.
 - Start Codex as an interactive tmux pane, not `codex exec`, when the user asks for a session/window/pane.
 - Verify startup with `summary`, `capture <session>:0.0 60`, and `children <session>:0.0`.
+- By default, automatically opens a Windows terminal window attached to the session (use `--no-open` to skip).
 
 ```bash
 bash <skill-dir>/scripts/tmux_process_windows.sh summary
@@ -114,13 +117,25 @@ For a non-standard cwd, pass it explicitly:
 bash <skill-dir>/scripts/tmux_process_windows.sh new-codex-session codex-myagent /home/zhanxp/projects/myagent
 ```
 
+To open an existing session in a Windows terminal window:
+
+```bash
+bash <skill-dir>/scripts/tmux_process_windows.sh open-session cx2
+```
+
+To create a session without auto-opening a window:
+
+```bash
+bash <skill-dir>/scripts/tmux_process_windows.sh new-codex-session cx2 --no-open
+```
+
 ## Cleanup Heuristics
 
 Classify before closing:
 
 - Must keep by default: `tg-agent-gateway`, `tg-webapp-tunnel`, `cc-switch-proxy`, and `tg-rescue-bot`.
 - Keep as standby by default: `tg-webapp-serveo`, unless the user wants to stop the backup tunnel and restart it only when needed.
-- Keep project anchors by default: `gateway` and `myagent`.
+- Keep project anchors by default: `gateway`, `myagent`, and `oa`.
 - Not required background services: `codex5`, `codex7`, `codex-myagent`, `codex-cx3-*`, `cx1`, `cx2`, `claude-cc2`..`claude-cc10` (and `claude-cc*-*` variants), and numeric-only leftover shells like `11`. These are work sessions, so they can be closed when the user asks to preserve only core service sessions.
 - Keep active: pane output shows `Working`, `Synthesizing`, an interrupt hint, a prompt being executed, or the tty activity is recent (idle < ~60s on a non-prompt line).
 - Keep service: known gateway/tunnel/monitor/proxy/rescue sessions, or process tree contains a live service command.

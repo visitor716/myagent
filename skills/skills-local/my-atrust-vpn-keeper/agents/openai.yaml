@@ -1,4 +1,4 @@
 interface:
   display_name: "my-aTrust VPN Keeper"
-  short_description: "Monitor and recover aTrust VPN on Windows"
-  default_prompt: "Use $my-atrust-vpn-keeper to inspect, recover, or install a Windows watchdog for aTrust VPN."
+  short_description: "Log in to, monitor, and recover aTrust VPN on Windows"
+  default_prompt: "Use $my-atrust-vpn-keeper to log in to aTrust VPN, inspect its status, recover it, or install a bounded Windows watchdog."

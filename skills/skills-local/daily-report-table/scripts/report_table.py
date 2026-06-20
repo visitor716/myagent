@@ -905,6 +905,17 @@ def prepend_rows_to_markdown_note(file_path: Path, headers: list[str], title: st
     file_path.write_text('\n'.join(updated_lines).rstrip() + '\n', encoding='utf-8')
 
 
+def append_rows_to_markdown_note(file_path: Path, headers: list[str], title: str, rows: list[list[str]]) -> None:
+    if not rows:
+        return
+
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_markdown_note(file_path, headers, title)
+    existing_content = file_path.read_text(encoding='utf-8').rstrip()
+    new_content = '\n'.join(markdown_row(row) for row in rows)
+    file_path.write_text(f'{existing_content}\n{new_content}\n', encoding='utf-8')
+
+
 def xlsx_styles_xml() -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -1026,13 +1037,53 @@ def write_xlsx_workbook(file_path: Path, main_rows: list[list[str]], spot_rows: 
 XLSX_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
 
-def read_xlsx_data_rows(file_path: Path) -> list[list[str]]:
-    """Read data rows (excluding header row 1) from an XLSX file's first sheet."""
+def read_xlsx_shared_strings(workbook: zipfile.ZipFile) -> list[str]:
+    try:
+        with workbook.open('xl/sharedStrings.xml') as f:
+            tree = ET.parse(f)
+    except (KeyError, ET.ParseError):
+        return []
+
+    ns = {'s': XLSX_NS}
+    values: list[str] = []
+    for item in tree.getroot().findall('s:si', ns):
+        values.append(''.join(text.text or '' for text in item.findall('.//s:t', ns)))
+    return values
+
+
+def xlsx_cell_col_index(cell_ref: str) -> int:
+    label = ''.join(ch for ch in cell_ref if ch.isalpha()).upper()
+    if not label:
+        return 0
+    index = 0
+    for ch in label:
+        index = index * 26 + (ord(ch) - ord('A') + 1)
+    return index - 1
+
+
+def read_xlsx_cell_value(cell_elem: ET.Element, shared_strings: list[str], ns: dict[str, str]) -> str:
+    is_elem = cell_elem.find('s:is', ns)
+    if is_elem is not None:
+        return ''.join(text.text or '' for text in is_elem.findall('.//s:t', ns))
+
+    value_elem = cell_elem.find('s:v', ns)
+    if value_elem is None or value_elem.text is None:
+        return ''
+    if cell_elem.get('t') == 's':
+        try:
+            return shared_strings[int(value_elem.text)]
+        except (ValueError, IndexError):
+            return ''
+    return value_elem.text
+
+
+def read_xlsx_rows(file_path: Path, sheet_path: str = 'xl/worksheets/sheet1.xml') -> list[list[str]]:
     if not file_path.exists():
         return []
     try:
         with zipfile.ZipFile(file_path, 'r') as z:
-            with z.open('xl/worksheets/sheet1.xml') as f:
+            shared_strings = read_xlsx_shared_strings(z)
+            with z.open(sheet_path) as f:
                 tree = ET.parse(f)
     except (zipfile.BadZipFile, KeyError, ET.ParseError):
         return []
@@ -1040,20 +1091,35 @@ def read_xlsx_data_rows(file_path: Path) -> list[list[str]]:
     ns = {'s': XLSX_NS}
     rows_data: list[list[str]] = []
     for row_elem in tree.getroot().findall('s:sheetData/s:row', ns):
-        row_num = int(row_elem.get('r', '0'))
-        if row_num == 1:
-            continue
-        cells: list[str] = []
+        cells_by_index: dict[int, str] = {}
+        max_index = -1
         for cell_elem in row_elem.findall('s:c', ns):
-            is_elem = cell_elem.find('s:is', ns)
-            if is_elem is not None:
-                t_elem = is_elem.find('s:t', ns)
-                cells.append(t_elem.text if t_elem is not None and t_elem.text else '')
-            else:
-                cells.append('')
-        if cells:
+            col_index = xlsx_cell_col_index(cell_elem.get('r', ''))
+            cells_by_index[col_index] = read_xlsx_cell_value(cell_elem, shared_strings, ns)
+            max_index = max(max_index, col_index)
+        if max_index >= 0:
+            cells = [cells_by_index.get(index, '') for index in range(max_index + 1)]
             rows_data.append(cells)
     return rows_data
+
+
+def read_xlsx_data_rows(file_path: Path, sheet_path: str = 'xl/worksheets/sheet1.xml') -> list[list[str]]:
+    """Read data rows (excluding header row 1) from an XLSX sheet."""
+    rows = read_xlsx_rows(file_path, sheet_path)
+    return rows[1:] if rows else []
+
+
+def normalize_xlsx_row(row: list[str], width: int) -> list[str]:
+    return row[:width] + [''] * max(0, width - len(row))
+
+
+def read_xlsx_table_rows(file_path: Path, headers: list[str], sheet_path: str) -> list[list[str]]:
+    rows = read_xlsx_rows(file_path, sheet_path)
+    if not rows:
+        return []
+    if normalize_xlsx_row(rows[0], len(headers)) != headers:
+        return []
+    return [normalize_xlsx_row(row, len(headers)) for row in rows[1:]]
 
 
 def write_spot_xlsx_workbook(file_path: Path, spot_rows: list[list[str]]) -> None:
@@ -1296,11 +1362,15 @@ def persist_outputs(
         saved_messages.append(f'已插入日报到: {display_path(main_note_path)}')
         if spot_rows:
             spot_note_path = output_dir / metadata.get('spot_note', DEFAULTS['spot_note'])
-            prepend_rows_to_markdown_note(spot_note_path, SPOT_HEADERS, '光斑调试记录', spot_rows)
-            saved_messages.append(f'已插入光斑调试记录到: {display_path(spot_note_path)}')
+            append_rows_to_markdown_note(spot_note_path, SPOT_HEADERS, '光斑调试记录', spot_rows)
+            saved_messages.append(f'已追加光斑调试记录到: {display_path(spot_note_path)}')
 
-        write_xlsx_workbook(xlsx_path, main_rows, spot_rows)
-        saved_messages.append(f'已生成 Excel 表格: {display_path(xlsx_path)}')
+        existing_main_rows = read_xlsx_table_rows(xlsx_path, MAIN_HEADERS, 'xl/worksheets/sheet1.xml')
+        existing_spot_rows = read_xlsx_table_rows(xlsx_path, SPOT_HEADERS, 'xl/worksheets/sheet2.xml')
+        xlsx_main_rows = main_rows + existing_main_rows
+        xlsx_spot_rows = spot_rows + existing_spot_rows
+        write_xlsx_workbook(xlsx_path, xlsx_main_rows, xlsx_spot_rows)
+        saved_messages.append(f'已追加/更新 Excel 表格: {display_path(xlsx_path)} (每天日报累计 {len(xlsx_main_rows)} 条)')
         if spot_rows:
             spot_xlsx_file = metadata.get('spot_xlsx_file') or DEFAULTS['spot_xlsx_file']
             spot_xlsx_path = output_dir / spot_xlsx_file

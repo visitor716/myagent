@@ -18,10 +18,14 @@ KEEP_INTEGRATION=false
 INTEGRATION_BRANCH=""
 RELEASE_NOTIFY=true
 ACTIVITY_SETTLE_SECONDS="${TG_WORKTREE_ACTIVITY_SETTLE_SECONDS:-3}"
+CANDIDATE_FILE=""
 
 READY_WORKERS=()
 READY_BRANCHES=()
 SKIPPED_LINES=()
+CANDIDATE_WORKERS=()
+declare -A CANDIDATE_EXPECTED_HEADS=()
+declare -A CANDIDATE_EXPECTED_BRANCHES=()
 
 usage() {
   cat <<'EOF'
@@ -29,6 +33,8 @@ Usage: merge_ready_worktrees.sh [options]
 
 Safely batch-merge ready tg-agent-gateway worker worktrees.
 Default mode is --dry-run. No branch is modified unless --apply is set.
+When --apply is used, the script runs the same worker scan as dry-run first,
+then proceeds with merge/apply automatically if ready workers exist.
 
 Options:
   --dry-run                 Preview only (default)
@@ -36,6 +42,7 @@ Options:
   --repo <path>             Main repo path (default: /home/zhanxp/projects/tg-agent-gateway)
   --base <ref>              Base branch/ref (default: master)
   --workers "<list>"        Space-separated workers (default: cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10)
+  --candidate-file <path>   Merge only workers recorded in a cx2 PASS integration candidate JSON file
   --include-active          Do not skip worktrees with busy or unknown local activity
   --activity-settle-seconds <n>
                             Seconds to sample tmux output before treating a pane as idle (default: 3)
@@ -52,6 +59,8 @@ Safety:
   - Clean worktrees with only quiet tmux panes are allowed; they are occupied,
     not busy.
   - Apply mode leaves master unchanged if merge or verification fails.
+  - Candidate-file mode requires every recorded candidate to be ready and
+    refuses branch mismatch or HEAD SHA drift.
   - After a verified master fast-forward, apply mode restarts Gateway and sends
     the latest /app release notification by default.
   - The script never runs git reset --hard, git clean, force push, or push.
@@ -81,6 +90,11 @@ while [[ $# -gt 0 ]]; do
     --workers)
       [[ $# -ge 2 ]] || { echo "Missing value for --workers" >&2; exit 2; }
       WORKERS="$2"
+      shift 2
+      ;;
+    --candidate-file)
+      [[ $# -ge 2 ]] || { echo "Missing value for --candidate-file" >&2; exit 2; }
+      CANDIDATE_FILE="$2"
       shift 2
       ;;
     --include-active)
@@ -143,6 +157,10 @@ short_head() {
   git -C "$1" rev-parse --short HEAD 2>/dev/null || printf 'unknown'
 }
 
+full_head() {
+  git -C "$1" rev-parse HEAD 2>/dev/null || printf 'unknown'
+}
+
 worker_path() {
   local worker="$1"
   local repo_name
@@ -154,6 +172,62 @@ add_skip() {
   SKIPPED_LINES+=("$1: $2")
 }
 
+load_candidate_file() {
+  local parse_output worker branch head
+
+  [[ -n "$CANDIDATE_FILE" ]] || return
+  [[ -f "$CANDIDATE_FILE" ]] || die "Candidate file not found: $CANDIDATE_FILE"
+
+  CANDIDATE_WORKERS=()
+  if ! parse_output="$(python3 - "$CANDIDATE_FILE" <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as fh:
+    data = json.load(fh)
+
+if data.get('kind') != 'tg-agent-gateway.integration-candidate':
+    raise SystemExit(f"invalid candidate kind in {path}")
+
+candidates = data.get('candidates')
+if not isinstance(candidates, list) or not candidates:
+    raise SystemExit(f"candidate file has no candidates: {path}")
+
+seen = set()
+for item in candidates:
+    if not isinstance(item, dict):
+        raise SystemExit("candidate entry must be an object")
+    worker = item.get('worker')
+    branch = item.get('branch')
+    head = item.get('head')
+    if not isinstance(worker, str) or not re.fullmatch(r'[A-Za-z0-9._-]{1,48}', worker):
+        raise SystemExit(f"invalid worker in candidate file: {worker!r}")
+    if worker in seen:
+        raise SystemExit(f"duplicate worker in candidate file: {worker}")
+    if not isinstance(branch, str) or not branch or any(ch.isspace() for ch in branch):
+        raise SystemExit(f"invalid branch for {worker}: {branch!r}")
+    if not isinstance(head, str) or not re.fullmatch(r'[0-9a-fA-F]{40}', head):
+        raise SystemExit(f"invalid head for {worker}: {head!r}")
+    seen.add(worker)
+    print(f"{worker}\t{branch}\t{head.lower()}")
+PY
+  )"; then
+    die "Failed to parse candidate file: $CANDIDATE_FILE"
+  fi
+
+  while IFS=$'\t' read -r worker branch head; do
+    [[ -n "$worker" ]] || continue
+    CANDIDATE_WORKERS+=("$worker")
+    CANDIDATE_EXPECTED_BRANCHES["$worker"]="$branch"
+    CANDIDATE_EXPECTED_HEADS["$worker"]="$head"
+  done <<< "$parse_output"
+
+  [[ ${#CANDIDATE_WORKERS[@]} -gt 0 ]] || die "Candidate file produced no merge candidates: $CANDIDATE_FILE"
+  WORKERS="${CANDIDATE_WORKERS[*]}"
+}
+
 require_repo() {
   [[ -d "$REPO" ]] || die "Repo not found: $REPO"
   git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "Not a git worktree: $REPO"
@@ -162,7 +236,7 @@ require_repo() {
 
 scan_worker() {
   local worker="$1"
-  local path branch status occupied panes busy idle counts behind ahead
+  local path branch status occupied panes busy idle counts behind ahead expected_branch expected_head actual_head
 
   path="$(worker_path "$worker")"
   if [[ ! -d "$path" ]]; then
@@ -178,6 +252,21 @@ scan_worker() {
   if [[ -z "$branch" ]]; then
     add_skip "$worker" "detached HEAD"
     return
+  fi
+
+  expected_branch="${CANDIDATE_EXPECTED_BRANCHES[$worker]:-}"
+  if [[ -n "$expected_branch" && "$branch" != "$expected_branch" ]]; then
+    add_skip "$worker" "branch mismatch expected=$expected_branch actual=$branch"
+    return
+  fi
+
+  expected_head="${CANDIDATE_EXPECTED_HEADS[$worker]:-}"
+  if [[ -n "$expected_head" ]]; then
+    actual_head="$(full_head "$path" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$actual_head" != "$expected_head" ]]; then
+      add_skip "$worker" "HEAD drift expected=${expected_head:0:12} actual=${actual_head:0:12} branch=$branch"
+      return
+    fi
   fi
 
   status="$(git -C "$path" status --short)"
@@ -219,11 +308,16 @@ scan_worker() {
 }
 
 print_summary() {
+  local mode="${1:-$([ "$APPLY" == "true" ] && echo apply || echo dry-run)}"
   echo
   echo "== Summary =="
   echo "repo: $REPO"
   echo "base: $BASE_REF"
-  echo "mode: $($APPLY && echo apply || echo dry-run)"
+  echo "mode: $mode"
+  if [[ -n "$CANDIDATE_FILE" ]]; then
+    echo "candidate_file: $CANDIDATE_FILE"
+    echo "candidate_workers: ${WORKERS}"
+  fi
   echo "ready: ${#READY_WORKERS[@]}"
   echo "skipped: ${#SKIPPED_LINES[@]}"
 
@@ -235,9 +329,27 @@ print_summary() {
 }
 
 assert_main_ready_for_apply() {
-  local current status
+  local status current
+
+  status="$(run_git status --short)"
+  if [[ -n "$status" ]]; then
+    echo "Main repo is dirty; refusing apply:" >&2
+    printf '%s\n' "$status" >&2
+    exit 1
+  fi
+
   current="$(run_git branch --show-current)"
-  [[ "$current" == "$BASE_REF" ]] || die "Main repo must be on $BASE_REF, current=$current"
+  if [[ "$current" != "$BASE_REF" ]]; then
+    echo "Main repo currently on $current, switching to $BASE_REF before apply..."
+    if ! run_git checkout "$BASE_REF"; then
+      die "Failed to switch main repo to $BASE_REF"
+    fi
+
+    current="$(run_git branch --show-current)"
+    if [[ "$current" != "$BASE_REF" ]]; then
+      die "Unable to switch main repo to $BASE_REF, current=$current"
+    fi
+  fi
 
   status="$(run_git status --short)"
   [[ -z "$status" ]] || {
@@ -343,6 +455,7 @@ apply_ready_merges() {
 main() {
   REPO="$(cd "$REPO" && pwd)"
   require_repo
+  load_candidate_file
 
   if [[ "$FETCH" == "true" ]]; then
     git -C "$REPO" fetch origin --prune || echo "WARN: fetch failed; continuing with local refs" >&2
@@ -353,11 +466,23 @@ main() {
     scan_worker "$worker"
   done
 
-  print_summary
+  if [[ -n "$CANDIDATE_FILE" && ${#SKIPPED_LINES[@]} -gt 0 ]]; then
+    print_summary dry-run
+    die "Candidate-file mode requires every cx2-approved candidate to be ready"
+  fi
 
   if [[ "$APPLY" == "true" ]]; then
+    print_summary "dry-run"
+    if [[ ${#READY_WORKERS[@]} -eq 0 ]]; then
+      echo
+      echo "Dry-run found no ready worktrees. Not applying."
+      return 0
+    fi
+    echo
+    echo "Dry-run precheck passed. Continuing with apply."
     apply_ready_merges
   else
+    print_summary dry-run
     echo
     echo "Dry-run only. Re-run with --apply to merge ready worktrees."
   fi

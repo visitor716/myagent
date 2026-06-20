@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+WSL_DISTRO="${WSL_DISTRO_NAME:-}"
+POWERSHELL_PATH="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -10,7 +13,8 @@ Usage:
   tmux_process_windows.sh classify <target>
   tmux_process_windows.sh capture <target> [lines]
   tmux_process_windows.sh children <target>
-  tmux_process_windows.sh new-codex-session <session> [cwd]
+  tmux_process_windows.sh new-codex-session <session> [cwd] [--no-open]
+  tmux_process_windows.sh open-session <session>
   tmux_process_windows.sh send-text <target> <text> [--enter]
   tmux_process_windows.sh send-keys <target> <key...>
   tmux_process_windows.sh stop <target> [--kill-after <seconds> --yes]
@@ -75,6 +79,78 @@ default_codex_session_cwd() {
   fi
 
   return 1
+}
+
+get_wsl_distro() {
+  if [ -n "$WSL_DISTRO" ]; then
+    printf '%s\n' "$WSL_DISTRO"
+    return 0
+  fi
+
+  if [ -f /etc/os-release ]; then
+    local id
+    id="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"' || true)"
+    if [ -n "$id" ]; then
+      printf '%s\n' "$id"
+      return 0
+    fi
+  fi
+
+  echo "Ubuntu"
+}
+
+find_windows_terminal() {
+  local wt_paths=(
+    "/mnt/c/Program Files/WindowsApps/Microsoft.WindowsTerminal_*/wt.exe"
+    "/mnt/c/Users/$USER/AppData/Local/Microsoft/WindowsApps/wt.exe"
+    "/mnt/c/Program Files/Windows Terminal/wt.exe"
+  )
+
+  for path in "${wt_paths[@]}"; do
+    # Use compgen to handle globs
+    if compgen -G "$path" >/dev/null 2>&1; then
+      local found
+      found="$(compgen -G "$path" 2>/dev/null | head -1)"
+      if [ -n "$found" ] && [ -x "$found" ]; then
+        printf '%s\n' "$found"
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
+
+open_wsl_terminal_window() {
+  local session="$1"
+  require_target "$session"
+
+  local distro
+  distro="$(get_wsl_distro)"
+
+  echo "Opening terminal window for session: $session (distro: $distro)"
+
+  # Try Windows Terminal first
+  local wt_path
+  if wt_path="$(find_windows_terminal)"; then
+    echo "Using Windows Terminal: $wt_path"
+    # Use a simple, reliable approach with a temporary script or direct invocation
+    # Windows Terminal wt.exe expects its own argument format
+    # Let's try a simpler approach first - just open a WSL window and let user attach
+    local wt_winpath
+    wt_winpath="$(wslpath -w "$wt_path" 2>/dev/null || echo "$wt_path")"
+    "$POWERSHELL_PATH" -NoProfile -NonInteractive -Command \
+      "Start-Process -FilePath '$wt_winpath' -ArgumentList 'wsl.exe', '-d', '$distro'" -WindowStyle Normal
+    echo "Opened Windows Terminal window - please run: tmux attach -t '$session'"
+    return 0
+  fi
+
+  # Fallback to PowerShell with ConHost
+  echo "Windows Terminal not found, using PowerShell window"
+  "$POWERSHELL_PATH" -NoProfile -NonInteractive -Command \
+    "Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoExit', '-Command', 'wsl.exe -d $distro'" -WindowStyle Normal
+  echo "Opened PowerShell window - please run: tmux attach -t '$session'"
+  return 0
 }
 
 pane_pid() {
@@ -194,13 +270,39 @@ show_children() {
 
 new_codex_session() {
   local session="$1"
-  local cwd="${2:-}"
+  local cwd=""
+  local open_window="yes"
+
+  # Parse arguments
+  shift || true
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --no-open)
+        open_window="no"
+        shift
+        ;;
+      *)
+        if [ -z "$cwd" ]; then
+          cwd="$1"
+        else
+          echo "unknown argument: $1" >&2
+          exit 2
+        fi
+        shift
+        ;;
+    esac
+  done
+
   require_target "$session"
   validate_session_name "$session"
 
   if session_exists "$session"; then
     echo "tmux session already exists: $session" >&2
     echo "inspect it with: $0 capture $session:0.0 80" >&2
+    if [ "$open_window" = "yes" ]; then
+      echo "opening existing session window..."
+      open_wsl_terminal_window "$session"
+    fi
     exit 2
   fi
 
@@ -222,6 +324,11 @@ new_codex_session() {
   sleep 0.5
   echo "created codex session: $session"
   tmux list-panes -t "$session" -F 'pane=#{session_name}:#{window_index}.#{pane_index} active=#{pane_active} dead=#{pane_dead} pid=#{pane_pid} cmd=#{pane_current_command} cwd=#{pane_current_path} title=#{pane_title}'
+
+  if [ "$open_window" = "yes" ]; then
+    echo "opening terminal window..."
+    open_wsl_terminal_window "$session"
+  fi
 }
 
 classify_target() {
@@ -249,8 +356,8 @@ classify_target() {
   fi
 
   case "$target" in
-    tg-agent-gateway:*|tg-webapp-tunnel:*|tg-webapp-url-monitor:*|tg-rescue-bot:*|cc-switch-proxy:*)
-      echo "protected-signal: target matches a known long-running service session"
+    tg-agent-gateway:*|tg-webapp-tunnel:*|tg-webapp-url-monitor:*|tg-rescue-bot:*|cc-switch-proxy:*|oa:*)
+      echo "protected-signal: target matches a known protected service or project session"
       ;;
   esac
 
@@ -344,7 +451,10 @@ main() {
       show_children "${1:-}"
       ;;
     new-codex-session|new-codex)
-      new_codex_session "${1:-}" "${2:-}"
+      new_codex_session "${1:-}" "${@:2}"
+      ;;
+    open-session|open)
+      open_wsl_terminal_window "${1:-}"
       ;;
     send-text)
       send_text "${1:-}" "${2:-}" "${3:-}"

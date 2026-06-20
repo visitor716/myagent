@@ -56,12 +56,19 @@ class OaExceptionRecordsTests(unittest.TestCase):
         self.assertEqual(first.source_machine, second.source_machine)
         self.assertIn(first.factory_serial, {'5655', '4659', '4657'})
 
-    def test_missing_machine_serial_is_reported_as_warning(self) -> None:
+    def test_machine_14_reuses_machine_13_serial(self) -> None:
         plan = oa_exception_records.build_plan('14A出料感应信号异常，调整后恢复', self.build_args())
 
         self.assertEqual(plan.records[0].machine_index, 14)
+        self.assertEqual(plan.records[0].factory_serial, '5655')
+        self.assertNotIn('未配置 14 号机的设备出厂编号', plan.warnings)
+
+    def test_missing_machine_serial_is_reported_as_warning(self) -> None:
+        plan = oa_exception_records.build_plan('15A出料感应信号异常，调整后恢复', self.build_args())
+
+        self.assertEqual(plan.records[0].machine_index, 15)
         self.assertEqual(plan.records[0].factory_serial, '')
-        self.assertIn('未配置 14 号机的设备出厂编号', plan.warnings)
+        self.assertIn('未配置 15 号机的设备出厂编号', plan.warnings)
 
     def test_json_output_uses_sanitized_oa_url(self) -> None:
         plan = oa_exception_records.build_plan('10B1光斑破洞，调整DOE后恢复', self.build_args())

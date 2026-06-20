@@ -1,4 +1,4 @@
 interface:
   display_name: "my-Codex Task Queue"
   short_description: "Queue Codex tasks and compact between runs."
-  default_prompt: "Use $my-codex-task-queue to add follow-up requirements to a Codex tmux task queue, watch for completion markers, run /compact, and continue with the next queued task."
+  default_prompt: "Use $my-codex-task-queue to add follow-up requirements to a Codex tmux task queue, watch for completion markers, run /compact, and continue with the next queued task. Inspect an existing pane before dispatch; if it is in Plan mode, has an old confirmation prompt, or contains typed input, start a fresh tmux Codex session instead. After dispatch, confirm actual work started; pasted-content or Create-a-plan prompts alone are not enough."

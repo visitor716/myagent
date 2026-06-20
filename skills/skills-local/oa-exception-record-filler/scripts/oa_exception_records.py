@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Sequence
 
 
-DEFAULT_CUSTOMER_ROW = '扬州晶澳F3车间'
+DEFAULT_CUSTOMER_ROW = '扬州晶澳'
 DEFAULT_MACHINE_MODEL = '量产机'
 DEFAULT_PROJECT = 'TCSE'
 DEFAULT_BUSINESS_CATEGORY = '运维'
@@ -59,6 +59,7 @@ MACHINE_SERIALS = {
     11: '4666',
     12: '4661',
     13: '5655',
+    14: '5655',
 }
 
 

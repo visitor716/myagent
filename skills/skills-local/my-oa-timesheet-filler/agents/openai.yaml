@@ -1,0 +1,4 @@
+interface:
+  display_name: "OA 工时单填报"
+  short_description: "填报 DR Laser OA 技术服务部工时分配单"
+  default_prompt: "填写本月 OA 工时分配单，只保存不提交，并输出已处理、跳过和验证结果。"

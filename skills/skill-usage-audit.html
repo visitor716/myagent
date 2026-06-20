@@ -1,0 +1,2714 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>技能使用情况盘点报表</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }
+        .header h1 { font-size: 28px; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; padding: 30px; background: #fafafa; border-bottom: 1px solid #eee; }
+        .stat-card { background: white; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #eee; }
+        .stat-card .number { font-size: 36px; font-weight: bold; margin-bottom: 5px; }
+        .stat-card .label { color: #666; font-size: 14px; }
+        .number.keep-hot { color: #10b981; }
+        .number.keep-on-demand { color: #f59e0b; }
+        .number.archive { color: #ef4444; }
+        .number.review { color: #8b5cf6; }
+        .filters { padding: 20px 30px; border-bottom: 1px solid #eee; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; }
+        .filter-group { display: flex; align-items: center; gap: 8px; }
+        .filter-group label { font-weight: 500; color: #333; }
+        .filter-group select, .filter-group input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .table-container { padding: 30px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; color: #333; position: sticky; top: 0; cursor: pointer; }
+        th:hover { background: #e9ecef; }
+        tr:hover { background: #f8f9fa; }
+        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; display: inline-block; }
+        .status-used { background: #d1fae5; color: #065f46; }
+        .status-memory-only { background: #fef3c7; color: #92400e; }
+        .status-no-evidence { background: #f3f4f6; color: #4b5563; }
+        .rec-badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; display: inline-block; }
+        .rec-keep-hot { background: #d1fae5; color: #065f46; }
+        .rec-keep-on-demand { background: #fef3c7; color: #92400e; }
+        .rec-archive { background: #fee2e2; color: #991b1b; }
+        .rec-review { background: #ede9fe; color: #5b21b6; }
+        .hidden { display: none; }
+        .footer { padding: 20px 30px; text-align: center; color: #666; font-size: 13px; border-top: 1px solid #eee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 技能使用情况盘点报表</h1>
+            <p>生成时间: 2026-06-10 20:51:39</p>
+        </div>
+        
+        <div class="summary">
+            <div class="stat-card">
+                <div class="number">179</div>
+                <div class="label">总技能数</div>
+            </div>
+            <div class="stat-card">
+                <div class="number status-used">16</div>
+                <div class="label">已使用技能</div>
+            </div>
+            <div class="stat-card">
+                <div class="number status-memory-only">26</div>
+                <div class="label">仅记忆命中</div>
+            </div>
+            <div class="stat-card">
+                <div class="number status-no-evidence">137</div>
+                <div class="label">无使用证据</div>
+            </div>
+            <div class="stat-card">
+                <div class="number keep-hot">6</div>
+                <div class="label">建议保留-核心</div>
+            </div>
+            <div class="stat-card">
+                <div class="number keep-on-demand">32</div>
+                <div class="label">建议保留-按需</div>
+            </div>
+            <div class="stat-card">
+                <div class="number archive">136</div>
+                <div class="label">建议归档</div>
+            </div>
+            <div class="stat-card">
+                <div class="number review">5</div>
+                <div class="label">需要审核</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <div class="filter-group">
+                <label>状态:</label>
+                <select id="statusFilter">
+                    <option value="">全部</option>
+                    <option value="used">已使用</option>
+                    <option value="memory-only">仅记忆命中</option>
+                    <option value="no-evidence">无使用证据</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>建议:</label>
+                <select id="recommendationFilter">
+                    <option value="">全部</option>
+                    <option value="keep-hot">保留-核心</option>
+                    <option value="keep-on-demand">保留-按需</option>
+                    <option value="archive-or-disable">归档或禁用</option>
+                    <option value="review">需要审核</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>搜索:</label>
+                <input type="text" id="searchInput" placeholder="搜索技能名...">
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table id="skillsTable">
+                <thead>
+                    <tr>
+                        <th>技能名</th>
+                        <th>分类</th>
+                        <th>Codex</th>
+                        <th>Agents/Hermes</th>
+                        <th>MyAgent</th>
+                        <th>触发次数</th>
+                        <th>首次触发</th>
+                        <th>最近触发</th>
+                        <th>记忆命中</th>
+                        <th>状态</th>
+                        <th>建议</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+
+                    <tr data-status="used" data-recommendation="keep-hot">
+                        <td><strong>worktree-merge-master</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>56</td>
+                        <td>2026-06-05</td>
+                        <td>2026-06-10</td>
+                        <td>0</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-hot">保留-核心</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-hot">
+                        <td><strong>my-workflows</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>41</td>
+                        <td>2026-06-05</td>
+                        <td>2026-06-09</td>
+                        <td>22</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-hot">保留-核心</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-hot">
+                        <td><strong>tg-webapp-url-monitor</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>10</td>
+                        <td>2026-06-04</td>
+                        <td>2026-06-07</td>
+                        <td>0</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-hot">保留-核心</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-hot">
+                        <td><strong>wsl-windows-chrome</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>8</td>
+                        <td>2026-06-04</td>
+                        <td>2026-06-06</td>
+                        <td>12</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-hot">保留-核心</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-hot">
+                        <td><strong>sync-shared-skills</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>6</td>
+                        <td>2026-06-03</td>
+                        <td>2026-06-07</td>
+                        <td>10</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-hot">保留-核心</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-hot">
+                        <td><strong>codex-task-queue</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>6</td>
+                        <td>2026-06-04</td>
+                        <td>2026-06-05</td>
+                        <td>8</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-hot">保留-核心</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>my-tmux-manager</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>5</td>
+                        <td>2026-06-07</td>
+                        <td>2026-06-09</td>
+                        <td>0</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>clash-proxy</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>4</td>
+                        <td>2026-06-06</td>
+                        <td>2026-06-06</td>
+                        <td>4</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>oa-exception-record-filler</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>3</td>
+                        <td>2026-06-03</td>
+                        <td>2026-06-03</td>
+                        <td>6</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>tg-app-release-command</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>3</td>
+                        <td>2026-06-04</td>
+                        <td>2026-06-05</td>
+                        <td>0</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>daily-report-table</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>2</td>
+                        <td>2026-06-10</td>
+                        <td>2026-06-10</td>
+                        <td>16</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>windows-system-settings</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>1</td>
+                        <td>2026-06-06</td>
+                        <td>2026-06-06</td>
+                        <td>16</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>agent-tools-repair</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>1</td>
+                        <td>2026-06-06</td>
+                        <td>2026-06-06</td>
+                        <td>12</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>cc-connect-bot-setup</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>1</td>
+                        <td>2026-06-05</td>
+                        <td>2026-06-05</td>
+                        <td>0</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>code-review</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>1</td>
+                        <td>2026-06-04</td>
+                        <td>2026-06-04</td>
+                        <td>0</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="used" data-recommendation="keep-on-demand">
+                        <td><strong>tg-gateway-menu-recovery</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>1</td>
+                        <td>2026-06-04</td>
+                        <td>2026-06-04</td>
+                        <td>0</td>
+                        <td><span class="status-badge status-used">已使用</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>pr</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>722</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>codex</strong></td>
+                        <td>autonomous-ai-agents</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>626</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>skill</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>480</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>worker</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>246</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>plan</strong></td>
+                        <td>software-development</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>148</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>review</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>142</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>test</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>132</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>obsidian</strong></td>
+                        <td>note-taking</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>70</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>note</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>60</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>cloud</strong></td>
+                        <td>mlops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>48</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>help</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>44</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>deploy</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>32</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>commit</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>26</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>references</strong></td>
+                        <td>dogfood</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>24</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>webapp-testing</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>20</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>trace</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>10</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>cancel</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>8</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>personal-bookkeeping</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>8</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>doctor</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>6</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>vitest</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>4</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="review">
+                        <td><strong>opencli-adapter-author</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>2</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-review">需要审核</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="review">
+                        <td><strong>opencli-autofix</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>2</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-review">需要审核</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="review">
+                        <td><strong>opencli-browser</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>2</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-review">需要审核</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="review">
+                        <td><strong>opencli-usage</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>2</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-review">需要审核</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>templates</strong></td>
+                        <td>dogfood</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>2</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="memory-only" data-recommendation="keep-on-demand">
+                        <td><strong>wsl-windows-path-compat</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>2</td>
+                        <td><span class="status-badge status-memory-only">仅记忆命中</span></td>
+                        <td><span class="rec-badge rec-keep-on-demand">保留-按需</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>agent-usage-monitor</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ai-slop-cleaner</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>airtable</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>analyze</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>apple-notes</strong></td>
+                        <td>apple</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>apple-reminders</strong></td>
+                        <td>apple</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>architecture-diagram</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>arxiv</strong></td>
+                        <td>research</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ascii-art</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ascii-video</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ask-claude</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ask-gemini</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>audio</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>autopilot</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>baoyu-article-illustrator</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>baoyu-comic</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>baoyu-infographic</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>blogwatcher</strong></td>
+                        <td>research</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>cc-connect-bridge-management</strong></td>
+                        <td>devops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>cc-switch-skill</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>claude-code</strong></td>
+                        <td>autonomous-ai-agents</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>claude-design</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>codebase-inspection</strong></td>
+                        <td>github</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>codex-launchers</strong></td>
+                        <td>myagent-local</td>
+                        <td></td>
+                        <td></td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>coding-standards</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>comfyui</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>configure-notifications</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>create-telegram-bot-bridge</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>creative-ideation</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>debugging-hermes-tui-commands</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>deep-interview</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>deploy-to-vercel</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>design-md</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>disable-mcp-startup</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>evaluation</strong></td>
+                        <td>mlops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>excalidraw</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>find-docs</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>find-nearby</strong></td>
+                        <td>leisure</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>find-skills</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>findmy</strong></td>
+                        <td>apple</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>gif-search</strong></td>
+                        <td>media</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>github-auth</strong></td>
+                        <td>github</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>github-code-review</strong></td>
+                        <td>github</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>github-issues</strong></td>
+                        <td>github</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>github-pr-workflow</strong></td>
+                        <td>github</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>github-repo-management</strong></td>
+                        <td>github</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>github-to-obsidian-tutorial</strong></td>
+                        <td>myagent</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="review">
+                        <td><strong>godmode</strong></td>
+                        <td>red-teaming</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-review">需要审核</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>google-workspace</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>heartmula</strong></td>
+                        <td>media</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>hermes-agent</strong></td>
+                        <td>autonomous-ai-agents</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>hermes-agent-skill-authoring</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>hermes-s6-container-supervision</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>himalaya</strong></td>
+                        <td>email</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>hud</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>huggingface-hub</strong></td>
+                        <td>mlops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>humanizer</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>imessage</strong></td>
+                        <td>apple</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>inference</strong></td>
+                        <td>mlops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>jupyter-live-kernel</strong></td>
+                        <td>data-science</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>kanban-codex-lane</strong></td>
+                        <td>autonomous-ai-agents</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>kanban-orchestrator</strong></td>
+                        <td>devops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>kanban-worker</strong></td>
+                        <td>devops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>linear</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>lint</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>llm-wiki</strong></td>
+                        <td>research</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>macos-computer-use</strong></td>
+                        <td>apple</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>manim-video</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>maps</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>mcporter</strong></td>
+                        <td>mcp</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>minecraft-modpack-server</strong></td>
+                        <td>gaming</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>models</strong></td>
+                        <td>mlops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>my-worktree-review</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>nano-pdf</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>native-mcp</strong></td>
+                        <td>mcp</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>neocd-change-workflow</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>node-inspect-debugger</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>notion</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ocr-and-documents</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>omx-setup</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>opencode</strong></td>
+                        <td>autonomous-ai-agents</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>p5js</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>personal-balance-sheet</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>pixel-art</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>pokemon-player</strong></td>
+                        <td>gaming</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>polymarket</strong></td>
+                        <td>research</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>popular-web-designs</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>powerpoint</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>pretext</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>python-debugpy</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ralph</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ralplan</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>reimbursement-screenshot-organizer</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>requesting-code-review</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>research</strong></td>
+                        <td>mlops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>research-paper-writing</strong></td>
+                        <td>research</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>runtime-skill-symlink-repair</strong></td>
+                        <td>devops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>security-review</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>sketch</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>songsee</strong></td>
+                        <td>media</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>songwriting-and-ai-music</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>spike</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>spotify</strong></td>
+                        <td>media</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>sqlite-admin</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>subagent-driven-development</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>sync-shared-skills.bak.20260523-125124</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>systematic-debugging</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>team</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>teams-meeting-pipeline</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>telegram-input-flow</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>test-driven-development</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>tg-agent-gateway-worktree-acceptance</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>tg-gateway-worktree-integration</strong></td>
+                        <td>myagent</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>third-party-cli-install</strong></td>
+                        <td>productivity</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>touchdesigner-mcp</strong></td>
+                        <td>creative</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>training</strong></td>
+                        <td>mlops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>typecheck</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ultraqa</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>ultrawork</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>vector-databases</strong></td>
+                        <td>mlops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>vercel</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>vercel-composition-patterns</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>vercel-react-best-practices</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>vercel-react-native-skills</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>visual-verdict</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>web-clone</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>web-design-guidelines</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>webhook-subscriptions</strong></td>
+                        <td>devops</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>wiki</strong></td>
+                        <td>codex</td>
+                        <td>✓</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>windows-document-organizer</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>worklog</strong></td>
+                        <td>agents</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>worktree-execution-acceptance</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>writing-plans</strong></td>
+                        <td>software-development</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>wx-cli</strong></td>
+                        <td>myagent</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>xitter</strong></td>
+                        <td>social-media</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>xurl</strong></td>
+                        <td>social-media</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                    <tr data-status="no-evidence" data-recommendation="archive-or-disable">
+                        <td><strong>youtube-content</strong></td>
+                        <td>media</td>
+                        <td></td>
+                        <td>✓</td>
+                        <td></td>
+                        <td>0</td>
+                        <td></td>
+                        <td></td>
+                        <td>0</td>
+                        <td><span class="status-badge status-no-evidence">无使用证据</span></td>
+                        <td><span class="rec-badge rec-archive-or-disable">归档或禁用</span></td>
+                    </tr>
+
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="footer">
+            <p>报表说明: 本表基于本机触发统计和记忆文件生成，不代表全局使用情况</p>
+        </div>
+    </div>
+    
+    <script>
+        // 过滤功能
+        const statusFilter = document.getElementById('statusFilter');
+        const recommendationFilter = document.getElementById('recommendationFilter');
+        const searchInput = document.getElementById('searchInput');
+        const tableBody = document.getElementById('tableBody');
+        const rows = tableBody.querySelectorAll('tr');
+        
+        function applyFilters() {
+            const statusValue = statusFilter.value;
+            const recValue = recommendationFilter.value;
+            const searchValue = searchInput.value.toLowerCase();
+            
+            rows.forEach(row => {
+                const rowStatus = row.dataset.status;
+                const rowRec = row.dataset.recommendation;
+                const rowText = row.textContent.toLowerCase();
+                
+                const statusMatch = !statusValue || rowStatus === statusValue;
+                const recMatch = !recValue || rowRec === recValue;
+                const searchMatch = !searchValue || rowText.includes(searchValue);
+                
+                if (statusMatch && recMatch && searchMatch) {
+                    row.classList.remove('hidden');
+                } else {
+                    row.classList.add('hidden');
+                }
+            });
+        }
+        
+        statusFilter.addEventListener('change', applyFilters);
+        recommendationFilter.addEventListener('change', applyFilters);
+        searchInput.addEventListener('input', applyFilters);
+        
+        // 排序功能
+        const table = document.getElementById('skillsTable');
+        const headers = table.querySelectorAll('th');
+        let sortDirection = {};
+        
+        headers.forEach((header, index) => {
+            header.addEventListener('click', () => {
+                const key = index;
+                sortDirection[key] = !sortDirection[key];
+                
+                const rowsArray = Array.from(rows);
+                rowsArray.sort((a, b) => {
+                    const aVal = a.cells[index].textContent.trim();
+                    const bVal = b.cells[index].textContent.trim();
+                    
+                    // 数字排序
+                    if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal))) {
+                        return sortDirection[key] 
+                            ? parseFloat(aVal) - parseFloat(bVal)
+                            : parseFloat(bVal) - parseFloat(aVal);
+                    }
+                    
+                    // 文本排序
+                    return sortDirection[key]
+                        ? aVal.localeCompare(bVal)
+                        : bVal.localeCompare(aVal);
+                });
+                
+                rowsArray.forEach(row => tableBody.appendChild(row));
+            });
+        });
+    </script>
+</body>
+</html>

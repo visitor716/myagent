@@ -84,11 +84,17 @@ Before syncing dirty worker refs, classify the dirty contents and export evidenc
 bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/audit_dirty_worktrees.sh
 ```
 
-Apply only after reading the dry-run report:
+Apply only after reading the dry-run report. (In `--apply`, the script performs
+the same scan as dry-run first, then continues automatically if ready branches
+exist.)
 
 ```bash
 bash /home/zhanxp/projects/myagent/skills/skills-local/worktree-merge-master/scripts/merge_ready_worktrees.sh --apply
 ```
+
+Note: in `--apply`, if the main repo is clean but currently checked out on a
+branch other than `master`, the skill will automatically checkout `master`
+before running merge/apply steps.
 
 The default target repo is:
 

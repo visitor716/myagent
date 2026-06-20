@@ -1,0 +1,13 @@
+{
+  "name": "my-oa-timesheet-filler",
+  "owner": "zhanxp",
+  "managed_by": "manual-git",
+  "source_of_truth": "/home/zhanxp/projects/myagent/skills/skills-local/my-oa-timesheet-filler",
+  "runtime_targets": [
+    "/home/zhanxp/.codex/skills/my-oa-timesheet-filler",
+    "/home/zhanxp/.claude/skills/my-oa-timesheet-filler",
+    "/home/zhanxp/.hermes/skills/myagent/my-oa-timesheet-filler"
+  ],
+  "sync_policy": "symlink-preferred",
+  "notes": "Local custom skill for verifying and filling DR Laser OA work-hours timesheets with a save-only workflow."
+}

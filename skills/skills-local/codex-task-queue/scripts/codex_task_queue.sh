@@ -305,6 +305,23 @@ task_body() {
   sed '1,/^---$/d' "$file"
 }
 
+capture_target_tail() {
+  local target="$1"
+  tmux capture-pane -pt "$target" -S -120 2>/dev/null || true
+}
+
+codex_prompt_started() {
+  local target="$1"
+  capture_target_tail "$target" |
+    grep -Eq 'Working \(|• (Ran|Explored|Edited|Updated|Called|Read|Search)|^• Working'
+}
+
+codex_prompt_needs_submit_nudge() {
+  local target="$1"
+  capture_target_tail "$target" |
+    grep -Eq '\[Pasted Content [0-9]+ chars\]|Create a plan\?'
+}
+
 render_task_prompt() {
   local file="$1"
   local id title task_cwd quoted_cwd marker
@@ -349,6 +366,13 @@ send_prompt_to_tmux() {
   tmux load-buffer -b "codexq-${task_id}" "$tmp"
   tmux paste-buffer -b "codexq-${task_id}" -t "$target"
   tmux send-keys -t "$target" Enter
+  sleep 1
+  if ! codex_prompt_started "$target" && codex_prompt_needs_submit_nudge "$target"; then
+    log "submit nudge target=$target id=$task_id"
+    tmux send-keys -t "$target" Escape
+    sleep 0.2
+    tmux send-keys -t "$target" Enter
+  fi
   tmux delete-buffer -b "codexq-${task_id}" 2>/dev/null || true
   rm -f "$tmp"
 }

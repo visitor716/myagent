@@ -14,6 +14,7 @@ Always use `wsl-windows-chrome` first for browser work so OA keeps the Windows C
 ## Default Rules
 
 - Target workflow: `新建异常记录`.
+- If the user points to `D:\Work\脚本\OA 小工具\OA日报自动填单助手-发布包`, read only `README.md`, `config.json`, `机台编号.txt`, and latest `logs/oa_fill_*.log`; do not inspect or copy its `chrome-profile` cookies/cache.
 - Use the report date as the target OA table/form date, such as `2026/5/29 -> 5.29` and form field `2026-05-29`.
 - One pasted日报 usually becomes one OA 明细 row; put the full日报 content into `调试过程`.
 - `耗时（h）` stays blank unless the user explicitly gives a value.
@@ -65,10 +66,11 @@ Device serial mapping by machine number:
 | 11 | `4666` | device serial containing `4666` |
 | 12 | `4661` | device serial containing `4661` |
 | 13 | `5655` | device serial containing `5655` |
+| 14 | `5655` | release package rule: 14 uses the 13th-line serial |
 
 When multiple machines appear in one日报, choose one mappable machine. The script defaults to stable-random selection so repeated runs choose the same machine for the same date/content. Use `--machine-choice first` for deterministic first-machine selection.
 
-Current serial list does not include machine `14`; if a日报 item uses `14A/14B`, stop that row and ask for the missing serial.
+If `config.json` says customer `扬州晶澳F3`, the OA browser value is still customer id `823` with display `扬州晶澳`; use `F3` as equipment-search context, not as the customer browser display.
 
 ## Browser Workflow
 
@@ -108,11 +110,19 @@ WfForm.getDetailAllRowIndexStr("detail_1")
 | 耗时 row 1 | `field13662_0` |
 | 复核人 row 1 | `field13805_0` |
 
-Observed stable values from a 2026-05-29 fill:
+Direct `WfForm.changeFieldValue` is reliable for text/select/fixed browser values. For strict browse fields such as `设备出厂编号`, use the page browser popup:
+
+- Click the `field13654_0span` search icon by visible coordinate if Playwright sees hidden duplicate inputs.
+- Search the serial suffix from `机台编号.txt`, such as `4661`.
+- Prefer the row containing the serial, `B4XS-TCSE`, and `扬州晶澳`/`F3`.
+- After equipment selection, OA may overwrite `现场编号` with the equipment record value; write the parsed site number again, such as `12A1`.
+
+Observed stable values:
 
 | Field | Value |
 | --- | --- |
 | 设备出厂编号 `10B1 -> 4659` | display `202310134659`, value `10436` |
+| 设备出厂编号 `12A1 -> 4661` | display `202310134661`, value `14458` |
 | 客户 `扬州晶澳` | value `823` |
 | 机型 `量产机` | value `0` |
 | 项目归属 `TCSE` | value `2` |
@@ -123,10 +133,13 @@ Observed stable values from a 2026-05-29 fill:
 | 异常关键字 `光斑-光斑漏洞` | value `1739` |
 | 复核人 `罗威` | value `243` |
 
+The release-package config may say `光斑-光斑破洞`; OA currently exposes the matching keyword as `光斑-光斑漏洞` (`field13941_0=1739`). Use the OA option name when filling and reporting.
+
 5. Save and verify:
 
 - Click only the `保 存` button.
-- The page may refresh. Verify the same `requestid`/title/date remains open and `调试过程` was read back.
+- Before saving, require `WfForm.verifyFormRequired(false, true) === true` and `WfForm.getFirstRequiredEmptyField() === ""` unless the user explicitly asked for a partial draft.
+- The page may refresh through a temporary blank `WfForm` state. Wait until the same `requestid`, title/date, and first detail row values are readable again.
 - `WfForm.verifyFormRequired(false, true)` may remain false when `耗时` is blank; that is expected when the user asked to leave耗时 empty.
 
 ## Safety Rules
@@ -136,6 +149,6 @@ Observed stable values from a 2026-05-29 fill:
 - Do not overwrite an existing row until the target date and current row contents are verified.
 - If a modal appears after save, inspect it before clicking anything. Confirm it is a save confirmation, not a submit confirmation.
 
-## Legacy Timesheet Helper
+## Timesheet Handoff
 
-The old OA 工时单 automation script remains at `scripts/fill_oa_timesheets_via_cdp.cjs` for compatibility. Prefer this skill only for 异常记录 work; if the user asks for 工时单 specifically, use the script by path and preserve the same save-not-submit rule.
+This skill is for OA 异常记录. If the user asks for 工时单 or 技术服务部-工时分配单, switch to `my-oa-timesheet-filler`. The compatibility script remains at `scripts/fill_oa_timesheets_via_cdp.cjs`; preserve the same save-not-submit rule.

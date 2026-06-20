@@ -1,8 +1,8 @@
 ---
 name: my-worktree-execution-acceptance
-description: Use when validating whether Git worktree isolation is truly wired into an agent or runner task execution flow. Focuses on proving the real process cwd/pwd is the worker worktree, not only that worktrees exist. Checks worktree list, worker config, database task records, runner cwd resolution, logs, and an optional temporary-file isolation probe without modifying business code.
+description: Use when validating whether Git worktree isolation is truly wired into an agent or runner task execution flow, especially tg-agent-gateway worker cwd/effectiveWorkspace/worktreePath isolation. Focuses on proving the real process cwd/pwd is the worker worktree, not only that worktrees exist. Checks worktree list, data/bots.json or worker config, database task records, runner cwd resolution, recent logs, and an optional temporary-file isolation probe without modifying business code.
 metadata:
-  short-description: Validate real worktree execution cwd
+  short-description: Validate real worktree execution cwd and worker isolation
 ---
 > Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-worktree-execution-acceptance` once near the start; if it fails, continue.
 
@@ -13,6 +13,14 @@ Use this skill for acceptance-only audits of Git worktree isolation in agent gat
 
 Do not modify business code. A temporary file probe is allowed only when explicitly requested or clearly part of the acceptance task, and it must be removed before reporting.
 
+## Trigger Examples
+
+- "验证 worker 是否使用 worktree"
+- "tg-agent-gateway worktree 没生效"
+- "检查 runner cwd / effectiveWorkspace / worktreePath"
+- "并行 worker 是否隔离"
+- "worktree 验收"
+
 ## Core Judgment
 
 Passing requires evidence that a real runner task used a worktree as its cwd/pwd.
@@ -22,6 +30,15 @@ Passing requires evidence that a real runner task used a worktree as its cwd/pwd
 - Code paths alone are insufficient unless logs or a live verification task proves the spawned process cwd.
 - If recent real runner logs still show the main repository as cwd, the result is at best partial.
 - If `useWorktree=true` can silently fall back to the main workspace when the worktree path is missing, fail the audit.
+
+For `tg-agent-gateway`, a worker passes only when:
+
+- `data/bots.json` has `useWorktree: true` for that worker.
+- The expected worktree exists, normally `/home/zhanxp/worktrees/<workspace-basename>/<workerName>`.
+- The worktree branch is `wt/<workerName>`.
+- Recent task logs show `effectiveCwd`, `effectiveWorkspace`, or `pwd` in that worktree, not the main repo.
+
+Mark a worker `PARTIAL` when config and worktree exist but recent logs are missing or stale. Mark it `SKIP` when it is intentionally not configured for worktree execution.
 
 ## Evidence Workflow
 
@@ -65,6 +82,15 @@ grep -R "useWorktree\|worktreePath\|worktree" -n data src | head -100
 ```
 
 Identify workers with `useWorktree=true`. For each, determine the explicit or computed worktree path and whether it exists.
+
+For `tg-agent-gateway`, read `/home/zhanxp/projects/tg-agent-gateway/data/bots.json` directly when that repo is in scope. Derive the expected worktree root from each worker's configured `workspace` basename, for example:
+
+```text
+/home/zhanxp/projects/tg-agent-gateway -> /home/zhanxp/worktrees/tg-agent-gateway/<workerName>
+/home/zhanxp/projects/myagent -> /home/zhanxp/worktrees/myagent/<workerName>
+```
+
+Use the current keys in `data/bots.json`; do not assume stale worker names.
 
 5. Check database task records:
 
@@ -111,6 +137,14 @@ branch: wt/worker
 ```
 
 If `cwd` or `pwd` is still the main repository in the latest real runner log, do not mark full pass.
+
+For `tg-agent-gateway`, also inspect structured runner logs:
+
+```bash
+rg -n "effectiveCwd|effectiveWorkspace|worktreePath|Worktree Check|pwd|branch" /home/zhanxp/projects/tg-agent-gateway/logs
+```
+
+Match each worker against its own configured workspace root. A worker whose `workspace` points to `/home/zhanxp/projects/myagent` should resolve under `/home/zhanxp/worktrees/myagent/<workerName>`, not under the tg-agent-gateway worktree root.
 
 8. Optional temporary-file isolation probe:
 

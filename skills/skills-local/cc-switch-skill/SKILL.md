@@ -1,6 +1,6 @@
 ---
 name: my-cc-switch-skill
-description: Diagnose and operate cc-switch from WSL or Windows-backed homes. Use when the user mentions cc-switch, providers, models, APIs, provider-count mismatches, Windows GUI database initialization failures such as “database is locked”, wants to list/switch/add/edit/validate cc-switch providers, or says phrases such as “切换到百度 CC” / “百度 CC” to switch bdcc1 Claude Code to Baidu Qianfan.
+description: Diagnose and operate cc-switch from WSL or Windows-backed homes. Use when the user mentions cc-switch, providers, models, APIs, provider-count mismatches, Windows GUI database initialization failures such as “database is locked” or “database disk image is malformed”, Volcengine/火山方舟/豆包/Kimi provider failures, CLI/GUI schema mismatches, wants to list/switch/add/edit/validate cc-switch providers, or says phrases such as “切换到百度 CC” / “百度 CC” to switch bdcc1 Claude Code to Baidu Qianfan.
 ---
 > Trigger stats (myagent-trigger-stats): when this skill is used, run `python3 /home/zhanxp/projects/myagent/skills/scripts/record_skill_trigger.py my-cc-switch-skill` once near the start; if it fails, continue.
 
@@ -38,7 +38,8 @@ Canonical paths:
 3. If the user explicitly wants the WSL-local CLI database, use `--wsl`.
 4. If the target is an isolated bot/worker, resolve its `HOME` from the project config or environment and use `--home <path>`.
 5. If the target is unclear, use `--auto`; it prefers the Windows GUI home when available.
-6. After modifications, rerun `config validate` and `provider current` against the same target home.
+6. After modifications, rerun `config validate`, `provider current`, and provider-specific `stream-check` against the same target home.
+7. Run cc-switch commands that may write health logs or migrate databases serially; parallel `provider current`, `config validate`, and `stream-check` can create transient SQLite locks.
 
 ## Windows GUI Database Locked
 
@@ -101,6 +102,155 @@ Success criteria:
 - No new `Failed to init database` entry appears after restart.
 
 If Windows and WSL provider counts differ after this fix, treat the Windows GUI database as the normal shared object. Use the WSL database only for explicit WSL-local work, or sync/import providers only after backing up both sides.
+
+## Windows GUI Database Malformed or Too New
+
+Use this path when the shared GUI store fails with `database disk image is malformed`, `cannot start a transaction within a transaction`, or `数据库版本过新`.
+
+Diagnosis:
+
+```bash
+cc-switch --version
+HOME=/mnt/c/Users/<WindowsUser> cc-switch config validate
+sqlite3 /mnt/c/Users/<WindowsUser>/.cc-switch/cc-switch.db 'PRAGMA quick_check; PRAGMA integrity_check;'
+powershell.exe -NoProfile -Command 'Get-Process -Name cc-switch -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path | Format-Table -AutoSize'
+```
+
+Rules:
+
+- If the database says schema/user_version is too new, run `cc-switch update` before editing data.
+- If `PRAGMA integrity_check` reports `database disk image is malformed`, stop the Windows GUI, back up the malformed DB, and rebuild from `.dump`; do not keep writing to the malformed DB.
+- If all `.db` backups also fail `PRAGMA quick_check`, prefer `.dump` from the current DB before falling back to older SQL exports.
+- Expect `/mnt/c` permissions to show as `0777` in WSL; treat that as a warning, not a validation failure, when `config validate` and `stream-check` pass.
+
+Recovery:
+
+```bash
+WIN_USER=<WindowsUser>
+WIN_HOME="/mnt/c/Users/$WIN_USER"
+TS=$(date +%Y%m%d-%H%M%S)
+
+powershell.exe -NoProfile -Command 'Stop-Process -Name cc-switch -Force -ErrorAction SilentlyContinue'
+cp "$WIN_HOME/.cc-switch/cc-switch.db" "$WIN_HOME/.cc-switch/backups/cc-switch.gui.malformed.before-rebuild-$TS.db"
+
+DUMP_SQL="/tmp/ccswitch-gui-dump-$TS.sql"
+DUMP_DB="/tmp/ccswitch-gui-dumped-$TS.db"
+sqlite3 "$WIN_HOME/.cc-switch/cc-switch.db" .dump > "$DUMP_SQL"
+sqlite3 "$DUMP_DB" < "$DUMP_SQL"
+sqlite3 "$DUMP_DB" 'PRAGMA quick_check; PRAGMA integrity_check;'
+cp "$DUMP_DB" "$WIN_HOME/.cc-switch/cc-switch.db"
+```
+
+Then rerun:
+
+```bash
+HOME="$WIN_HOME" cc-switch config validate
+HOME="$WIN_HOME" cc-switch provider current -a claude
+```
+
+Restart the GUI only after validation:
+
+```bash
+powershell.exe -NoProfile -Command 'Start-Process -FilePath "<cc-switch.exe path>"; Start-Sleep -Seconds 4; Get-Process -Name cc-switch -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path | Format-Table -AutoSize'
+```
+
+## Volcengine Ark / 火山方舟 Unavailable
+
+Use this path when the user says 火山方舟, Volcengine Ark, 豆包, Kimi, or `ark.cn-beijing.volces.com` is unavailable.
+
+Diagnosis:
+
+```bash
+GUI_HOME="$(bash scripts/cc-switch-run.sh --gui print-home)"
+HOME="$GUI_HOME" cc-switch provider current -a claude
+HOME="$GUI_HOME" cc-switch provider fetch-models -a claude <provider-id>
+HOME="$GUI_HOME" cc-switch provider stream-check -a claude <provider-id>
+```
+
+Interpretation:
+
+- If `stream-check` succeeds but `provider current` shows Main/Haiku/Sonnet/Opus as `default`, treat the provider as misconfigured for Claude Code even though the endpoint and key are valid.
+- `https://ark.cn-beijing.volces.com/api/coding` may host multiple provider records, for example `火山方舟` and `Kimi`; compare their model fields before editing.
+- Do not use `provider export` as a read-only inspection command inside a repo; it writes `.claude/settings.local.json` in the current directory and can contain provider config. Delete that file if accidentally created.
+
+Fix the selected 火山方舟 provider by backing up the target DB and setting an explicit code-capable model:
+
+```bash
+TARGET_HOME="$(bash scripts/cc-switch-run.sh --gui print-home)"
+PROVIDER_ID="2d1171e6-412d-4013-919f-6b9a13beaf41"
+MODEL="doubao-seed-2-0-code-preview-260215"
+TS=$(date +%Y%m%d-%H%M%S)
+
+mkdir -p "$TARGET_HOME/.cc-switch/backups"
+cp "$TARGET_HOME/.cc-switch/cc-switch.db" "$TARGET_HOME/.cc-switch/backups/cc-switch.before-volc-ark-model-fix-$TS.db"
+
+sqlite3 "$TARGET_HOME/.cc-switch/cc-switch.db" <<SQL
+UPDATE providers
+SET settings_config = json_set(
+  settings_config,
+  '$.model', '$MODEL',
+  '$.env.ANTHROPIC_MODEL', '$MODEL',
+  '$.env.ANTHROPIC_DEFAULT_HAIKU_MODEL', '$MODEL',
+  '$.env.ANTHROPIC_DEFAULT_SONNET_MODEL', '$MODEL',
+  '$.env.ANTHROPIC_DEFAULT_OPUS_MODEL', '$MODEL',
+  '$.env.ANTHROPIC_REASONING_MODEL', '$MODEL'
+)
+WHERE app_type='claude' AND id='$PROVIDER_ID';
+SELECT changes();
+SQL
+```
+
+Verify:
+
+```bash
+HOME="$TARGET_HOME" cc-switch config validate
+HOME="$TARGET_HOME" cc-switch provider current -a claude
+HOME="$TARGET_HOME" cc-switch provider stream-check -a claude "$PROVIDER_ID"
+```
+
+Success criteria:
+
+- `provider current` shows Main, Haiku, Sonnet, and Opus as `doubao-seed-2-0-code-preview-260215`, not `default`.
+- `stream-check` returns HTTP 200 and reports model `doubao-seed-2-0-code-preview-260215`.
+
+If the user also needs WSL-local state fixed, repeat the same backup and update with `TARGET_HOME="$HOME"` or use `bash scripts/cc-switch-run.sh --wsl ...`; otherwise leave WSL-local alone.
+
+## CLI Upgrade or WSL-Local Startup Hangs
+
+Use this path when `cc-switch update` fixes GUI schema compatibility but raw WSL-local commands such as `HOME=/home/<user> cc-switch provider current -a claude` hang with no output.
+
+Diagnosis:
+
+```bash
+ps -ef | rg 'cc-switch|cc-switch-run|sqlite3' | rg -v 'rg' || true
+find ~/.cc-switch -maxdepth 1 \( -name '*-wal' -o -name '*-shm' -o -name '*.lock' \) -printf '%p %s bytes\n'
+sqlite3 ~/.cc-switch/cc-switch.db 'PRAGMA wal_checkpoint(TRUNCATE); PRAGMA quick_check;'
+```
+
+Recovery:
+
+- Kill only stale cc-switch validation processes that you started during this repair.
+- Remove empty stale `cc-switch.db.init.lock` files after confirming no cc-switch process is using that HOME.
+- Remove `cc-switch.db-wal` and `cc-switch.db-shm` only after a successful `wal_checkpoint(TRUNCATE)` and no live cc-switch process.
+- If the real WSL HOME still hangs but a copied temp HOME works, back up `~/.cc-switch/settings.json` and replace it with the already-working GUI settings; this preserves the DB and avoids a downgrade.
+
+Commands:
+
+```bash
+ps -ef | rg 'cc-switch' | rg -v 'rg' || true
+sqlite3 ~/.cc-switch/cc-switch.db 'PRAGMA wal_checkpoint(TRUNCATE); PRAGMA quick_check;'
+rm -f ~/.cc-switch/cc-switch.db.init.lock ~/.cc-switch/cc-switch.db-wal ~/.cc-switch/cc-switch.db-shm
+
+TS=$(date +%Y%m%d-%H%M%S)
+cp ~/.cc-switch/settings.json ~/.cc-switch/backups/settings.wsl.before-ccswitch-startup-fix-$TS.json
+cp /mnt/c/Users/<WindowsUser>/.cc-switch/settings.json ~/.cc-switch/settings.json
+chmod 600 ~/.cc-switch/settings.json
+
+HOME="$HOME" timeout 30s cc-switch provider current -a claude
+HOME="$HOME" cc-switch config validate
+```
+
+Do not downgrade the CLI after it migrates a database to a newer schema unless you have verified the older binary can still read that schema. Prefer repairing settings/locks first.
 
 ## Fixed Intent: "切换到百度 CC"
 

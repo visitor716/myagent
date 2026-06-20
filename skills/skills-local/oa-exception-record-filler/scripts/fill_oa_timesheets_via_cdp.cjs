@@ -125,6 +125,8 @@ Options:
   --today YYYY-MM-DD               Business date for the overtime 24h window. Default: Asia/Shanghai today.
   --cdp-endpoint URL               Chrome DevTools endpoint. Default: ${DEFAULT_CDP_ENDPOINT}
   --dry-run                        Open and verify matching forms without saving.
+  --verify-only                    Verify current forms against planned values without saving.
+  --fill-missing                   Save only forms whose current values do not match planned values.
   --help                           Show this help.
 
 Examples:
@@ -132,6 +134,8 @@ Examples:
   fill_oa_timesheets_via_cdp.cjs --overtime-entry 2026-05-16:12 --overtime-entry 2026-05-17:11.5
   fill_oa_timesheets_via_cdp.cjs --overtime-entry 2026-05-20:0
   fill_oa_timesheets_via_cdp.cjs --entry 2026-05-18:8:8 --dry-run
+  fill_oa_timesheets_via_cdp.cjs --auto-from-list --since 2026-06-01 --until 2026-06-16 --verify-only
+  fill_oa_timesheets_via_cdp.cjs --auto-from-list --since 2026-06-01 --until 2026-06-16 --fill-missing
 `);
 }
 
@@ -139,6 +143,8 @@ function parseArgs(argv) {
   const options = {
     cdpEndpoint: DEFAULT_CDP_ENDPOINT,
     dryRun: false,
+    verifyOnly: false,
+    fillMissing: false,
     entries: [],
     autoFromList: false,
     listUrl: OA_LIST_URL,
@@ -156,6 +162,14 @@ function parseArgs(argv) {
     }
     if (arg === '--dry-run') {
       options.dryRun = true;
+      continue;
+    }
+    if (arg === '--verify-only') {
+      options.verifyOnly = true;
+      continue;
+    }
+    if (arg === '--fill-missing') {
+      options.fillMissing = true;
       continue;
     }
     if (arg === '--cdp-endpoint') {
@@ -210,6 +224,9 @@ function parseArgs(argv) {
   }
   if (options.since && options.until && options.since > options.until) {
     throw new Error(`Invalid date range: --since ${options.since} is after --until ${options.until}.`);
+  }
+  if (options.verifyOnly && options.fillMissing) {
+    throw new Error('--verify-only and --fill-missing cannot be used together.');
   }
 
   return options;
@@ -618,6 +635,49 @@ async function navigateListPage(listPage, pageNumber) {
 
   const pageLink = listPage.locator(`li.ant-pagination-item-${pageNumber} a`).first();
   if (await pageLink.count() === 0) {
+    const isFirstPage =
+      pageNumber === 1 &&
+      await listPage.locator('li.ant-pagination-first.ant-pagination-disabled').first().count() > 0;
+    if (isFirstPage) {
+      return;
+    }
+
+    if (pageNumber === 1) {
+      const firstPageButton = listPage.locator('li.ant-pagination-first:not(.ant-pagination-disabled)').first();
+      if (await firstPageButton.count() > 0) {
+        await firstPageButton.click();
+        await listPage.waitForFunction(
+          () => {
+            const active = document.querySelector('li.ant-pagination-item-active');
+            const first = document.querySelector('li.ant-pagination-first');
+            return (active && (active.textContent || '').trim() === '1') ||
+              (first && first.className.includes('ant-pagination-disabled'));
+          },
+          undefined,
+          { timeout: 10000 },
+        ).catch(() => undefined);
+        await waitForListReady(listPage);
+        await listPage.waitForTimeout(1200);
+        return;
+      }
+    }
+
+    const quickJumper = listPage.locator('.ant-pagination-options-quick-jumper input').first();
+    if (await quickJumper.count() > 0) {
+      await quickJumper.fill(String(pageNumber));
+      await quickJumper.press('Enter');
+      await listPage.waitForFunction(
+        (expectedPageNumber) => {
+          const active = document.querySelector('li.ant-pagination-item-active');
+          return active && (active.textContent || '').trim() === String(expectedPageNumber);
+        },
+        pageNumber,
+        { timeout: 10000 },
+      ).catch(() => undefined);
+      await waitForListReady(listPage);
+      await listPage.waitForTimeout(1200);
+      return;
+    }
     throw new Error(`OA list page ${pageNumber} is not available in the pagination controls.`);
   }
   await pageLink.click();
@@ -1125,6 +1185,30 @@ function verifyForm(form, entry) {
   return errors;
 }
 
+function buildPlannedForm(entry) {
+  return {
+    customer: CUSTOMER_NAME,
+    paidTransform: PAID_TRANSFORM_NO_NAME,
+    attendance: entry.attendance,
+    overtime: entry.overtime,
+    total: entry.total,
+    detailTotal: entry.total,
+    module: MODULE_NAME,
+    duration: entry.total,
+    serial: '',
+    remark: '',
+  };
+}
+
+function buildVerification(form, entry) {
+  const errors = verifyForm(form, entry);
+  return {
+    matches: errors.length === 0,
+    needsFill: errors.length > 0,
+    errors,
+  };
+}
+
 async function waitForVerifiedForm(page, entry, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let lastErrors = [];
@@ -1162,25 +1246,30 @@ async function run() {
   for (const entry of entries) {
     const page = await resolveFormPage(context, entry);
     const before = await readForm(page);
+    const planned = buildPlannedForm(entry);
+    const beforeVerification = buildVerification(before, entry);
 
-    if (options.dryRun) {
+    if (options.dryRun || options.verifyOnly) {
       results.push({
         date: entry.date,
-        dryRun: true,
+        dryRun: options.dryRun,
+        verifyOnly: options.verifyOnly,
         overtimeSource: entry.overtimeSource,
         current: sanitizePage(before),
-        planned: {
-          customer: CUSTOMER_NAME,
-          paidTransform: PAID_TRANSFORM_NO_NAME,
-          attendance: entry.attendance,
-          overtime: entry.overtime,
-          total: entry.total,
-          detailTotal: entry.total,
-          module: MODULE_NAME,
-          duration: entry.total,
-          serial: '',
-          remark: '',
-        },
+        planned,
+        verification: beforeVerification,
+      });
+      continue;
+    }
+
+    if (options.fillMissing && beforeVerification.matches) {
+      results.push({
+        date: entry.date,
+        skipped: true,
+        reason: 'already matches planned values',
+        current: sanitizePage(before),
+        planned,
+        verification: beforeVerification,
       });
       continue;
     }
@@ -1197,6 +1286,8 @@ async function run() {
         skipped: true,
         reason: 'save button not found, form may be already submitted or read-only',
         current: sanitizePage(before),
+        planned,
+        verification: beforeVerification,
       });
       continue;
     }
@@ -1235,15 +1326,19 @@ async function run() {
     results.push({
       date: entry.date,
       dryRun: options.dryRun,
+      fillMissing: options.fillMissing,
       overtimeSource: entry.overtimeSource,
       before: sanitizePage(before),
       saved: sanitizePage(saved),
+      verification: buildVerification(saved, entry),
     });
   }
 
   console.log(JSON.stringify({
     ok: true,
     dryRun: options.dryRun,
+    verifyOnly: options.verifyOnly,
+    fillMissing: options.fillMissing,
     skipped,
     results,
   }, null, 2));
@@ -1251,10 +1346,23 @@ async function run() {
   process.exit(0);
 }
 
-run().catch((error) => {
-  console.error(JSON.stringify({
-    ok: false,
-    error: error instanceof Error ? error.message : String(error),
-  }, null, 2));
-  process.exit(1);
-});
+if (require.main === module) {
+  run().catch((error) => {
+    console.error(JSON.stringify({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }, null, 2));
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  attendanceForDate,
+  buildPlannedForm,
+  buildVerification,
+  formatHours,
+  parseArgs,
+  parseEntry,
+  parseOvertimeEntry,
+  verifyForm,
+};
