@@ -21,6 +21,7 @@ param(
     [switch]$NoSubmit,
     [switch]$AutoLogin,
     [switch]$ProbeLoginState,
+    [switch]$RestartClientOnExit,
     [switch]$ForegroundProbe,
     [switch]$DryRun,
     [switch]$ForceRestart,
@@ -112,6 +113,20 @@ function Set-RunRegistryFallback {
     New-Item -Path $RunRegistryPath -Force | Out-Null
     New-ItemProperty -Path $RunRegistryPath -Name $RunRegistryValueName -Value $Command -PropertyType String -Force | Out-Null
     Write-Log "created HKCU Run fallback: $RunRegistryPath\$RunRegistryValueName"
+}
+
+function Remove-RunRegistryFallbackIfPresent {
+    if (Get-RunRegistryCommand) {
+        Remove-ItemProperty -Path $RunRegistryPath -Name $RunRegistryValueName -Force
+        Write-Log "removed stale HKCU Run fallback: $RunRegistryPath\$RunRegistryValueName"
+    }
+}
+
+function Remove-StartupFallbackIfPresent {
+    if (Test-Path $StartupFilePath) {
+        Remove-Item -Path $StartupFilePath -Force
+        Write-Log "removed stale Startup fallback: $StartupFilePath"
+    }
 }
 
 function Escape-CommandArgument {
@@ -1056,13 +1071,28 @@ function Login-Atrust {
     $before = Get-AtrustSnapshot
     Write-Log "before login: healthy=$($before.Healthy) missing=$($before.Missing) service=$($before.ServiceStatus) tray=$($before.TrayCount) agent=$($before.AgentCount) tunnel=$($before.TunnelCount)"
 
-    if ($before.Healthy -and -not $ForceLogin -and -not $AutoLogin) {
-        Show-AtrustWindow | Out-Null
-        Write-Log "aTrust is already healthy; login skipped"
-        return $before
-    }
-    if ($before.Healthy -and $AutoLogin -and -not $ForceLogin) {
-        Write-Log "AutoLogin requested; continuing login attempt instead of trusting process health as login state"
+    if ($WatchMode -and -not $ForceLogin) {
+        $watchLoginState = Get-AtrustLoginState | Select-Object -Last 1
+        if ($watchLoginState.State -ne "LoggedOut") {
+            Write-Log "watch login input skipped: background login-state=$($watchLoginState.State) reason=$($watchLoginState.Reason); not foregrounding aTrust without confirmed LoggedOut"
+            return $before
+        }
+        Write-Log "watch login input allowed after background confirmed LoggedOut"
+    } elseif ($before.Healthy -and -not $ForceLogin) {
+        $currentLoginState = Get-AtrustLoginState | Select-Object -Last 1
+        if ($currentLoginState.State -eq "LoggedIn") {
+            Write-Log "aTrust is already logged in; login skipped without foregrounding"
+            return $before
+        }
+        if (-not $AutoLogin) {
+            Write-Log "aTrust is already healthy; login skipped without foregrounding"
+            return $before
+        }
+        if ($currentLoginState.State -ne "LoggedOut") {
+            Write-Log "AutoLogin requested but background login-state=$($currentLoginState.State) reason=$($currentLoginState.Reason); not foregrounding aTrust without confirmed LoggedOut"
+            return $before
+        }
+        Write-Log "AutoLogin requested after background confirmed LoggedOut; continuing login attempt"
     }
 
     Recover-Atrust | Out-Null
@@ -1198,7 +1228,7 @@ function Watch-Atrust {
         Write-Log "ForegroundProbe is ignored during watch; background WindowCapture monitoring is enforced"
     }
 
-    Write-Log "watch started interval=${IntervalSeconds}s consecutiveFailures=$ConsecutiveFailures maxRecoveries=$MaxRecoveries maxChecks=$MaxChecks reloginCooldown=${ReloginCooldownSeconds}s maxReloginAttemptsPerLogout=$MaxReloginAttemptsPerLogout unknownThreshold=$UnknownLoginStateThreshold dryRun=$DryRun"
+    Write-Log "watch started interval=${IntervalSeconds}s consecutiveFailures=$ConsecutiveFailures maxRecoveries=$MaxRecoveries maxChecks=$MaxChecks reloginCooldown=${ReloginCooldownSeconds}s maxReloginAttemptsPerLogout=$MaxReloginAttemptsPerLogout unknownThreshold=$UnknownLoginStateThreshold restartClientOnExit=$RestartClientOnExit dryRun=$DryRun"
     $failureCount = 0
     $recoveries = 0
     $checks = 0
@@ -1206,6 +1236,7 @@ function Watch-Atrust {
     $unknownLoginStateCount = 0
     $confirmedLogoutActive = $false
     $reloginAttemptsForLogout = 0
+    $lastLoginStateName = $null
     while ($true) {
         $checks += 1
         try {
@@ -1218,6 +1249,14 @@ function Watch-Atrust {
                 if ($AutoLogin -and $ProbeLoginState) {
                     $loginState = Get-AtrustLoginState | Select-Object -Last 1
                     Write-Log "healthy service=$($snapshot.ServiceStatus) tray=$($snapshot.TrayCount) agent=$($snapshot.AgentCount) tunnel=$($snapshot.TunnelCount) loginState=$($loginState.State)"
+                    $previousLoginStateName = $lastLoginStateName
+                    $lastLoginStateName = $loginState.State
+                    if ($loginState.State -eq "LoggedOut" -and $previousLoginStateName -and $previousLoginStateName -ne "LoggedOut" -and $confirmedLogoutActive -and $reloginAttemptsForLogout -ge $MaxReloginAttemptsPerLogout) {
+                        Write-Log "explicit logged-out UI detected after $previousLoginStateName state; resetting relogin attempts for the visible login page"
+                        $confirmedLogoutActive = $false
+                        $reloginAttemptsForLogout = 0
+                        $unknownLoginStateCount = 0
+                    }
                     if ($loginState.State -eq "LoggedOut") {
                         $unknownLoginStateCount = 0
                         $confirmedLogoutActive = $true
@@ -1242,19 +1281,8 @@ function Watch-Atrust {
                         } elseif ($unknownLoginStateCount -eq ($UnknownLoginStateThreshold + 1)) {
                             Write-Log "unknown login-state threshold reached; foreground login is blocked because logout is not confirmed"
                         }
-                        if ($confirmedLogoutActive -and $reloginAttemptsForLogout -ge $MaxReloginAttemptsPerLogout) {
-                            Write-Log "confirmed logout still unresolved after Unknown probe; relogin attempts exhausted for this logout event [$reloginAttemptsForLogout/$MaxReloginAttemptsPerLogout]"
-                        } elseif ($confirmedLogoutActive -and $reloginAttemptsForLogout -gt 0) {
-                            if (Test-ReloginCooldownElapsed -LastAttemptAt $lastLoginAttemptAt) {
-                                $lastLoginAttemptAt = Get-Date
-                                $reloginAttemptsForLogout += 1
-                                Invoke-AtrustLoginForWatch -Reason "confirmed logout still unresolved after Unknown probe; relogin attempt [$reloginAttemptsForLogout/$MaxReloginAttemptsPerLogout]" | Out-Null
-                                $recoveries += 1
-                                if ($MaxRecoveries -gt 0 -and $recoveries -ge $MaxRecoveries) {
-                                    Write-Log "watch stopped after MaxRecoveries=$MaxRecoveries"
-                                    return
-                                }
-                            }
+                        if ($confirmedLogoutActive -and $reloginAttemptsForLogout -gt 0) {
+                            Write-Log "confirmed logout still unresolved while login-state is Unknown; not foregrounding or consuming relogin attempts until LoggedOut is explicitly visible"
                         }
                     } else {
                         $unknownLoginStateCount = 0
@@ -1265,15 +1293,25 @@ function Watch-Atrust {
                     Write-Log "healthy service=$($snapshot.ServiceStatus) tray=$($snapshot.TrayCount) agent=$($snapshot.AgentCount) tunnel=$($snapshot.TunnelCount)"
                 }
             } else {
-                $failureCount += 1
-                Write-Log "unhealthy[$failureCount/$ConsecutiveFailures] missing=$($snapshot.Missing) service=$($snapshot.ServiceStatus) tray=$($snapshot.TrayCount) agent=$($snapshot.AgentCount) tunnel=$($snapshot.TunnelCount)"
-                if ($failureCount -ge $ConsecutiveFailures) {
-                    Invoke-AtrustRecoverForWatch | Out-Null
-                    $recoveries += 1
+                $clientExited = -not $snapshot.TrayCount -or -not $snapshot.MainTrayCount
+                if ($clientExited -and -not $RestartClientOnExit) {
                     $failureCount = 0
-                    if ($MaxRecoveries -gt 0 -and $recoveries -ge $MaxRecoveries) {
-                        Write-Log "watch stopped after MaxRecoveries=$MaxRecoveries"
-                        return
+                    $unknownLoginStateCount = 0
+                    $confirmedLogoutActive = $false
+                    $reloginAttemptsForLogout = 0
+                    $lastLoginStateName = $null
+                    Write-Log "client not running; respecting manual exit and not starting aTrust tray missing=$($snapshot.Missing) service=$($snapshot.ServiceStatus) tray=$($snapshot.TrayCount) mainTray=$($snapshot.MainTrayCount) agent=$($snapshot.AgentCount) tunnel=$($snapshot.TunnelCount)"
+                } else {
+                    $failureCount += 1
+                    Write-Log "unhealthy[$failureCount/$ConsecutiveFailures] missing=$($snapshot.Missing) service=$($snapshot.ServiceStatus) tray=$($snapshot.TrayCount) agent=$($snapshot.AgentCount) tunnel=$($snapshot.TunnelCount)"
+                    if ($failureCount -ge $ConsecutiveFailures) {
+                        Invoke-AtrustRecoverForWatch | Out-Null
+                        $recoveries += 1
+                        $failureCount = 0
+                        if ($MaxRecoveries -gt 0 -and $recoveries -ge $MaxRecoveries) {
+                            Write-Log "watch stopped after MaxRecoveries=$MaxRecoveries"
+                            return
+                        }
                     }
                 }
             }
@@ -1313,34 +1351,34 @@ function Install-WatchTask {
     if ($AutoLogin -or $ProbeLoginState) {
         $taskCommand += " -ProbeLoginState"
     }
+    if ($RestartClientOnExit) {
+        $taskCommand += " -RestartClientOnExit"
+    }
     if ($ForegroundProbe) {
         Write-Log "ForegroundProbe is ignored for installed watch; background monitoring is enforced"
     }
     $runnerCommand = "@echo off`r`nstart `"`" /min $taskCommand`r`n"
     $launcherCommand = "cmd.exe /c $RunnerCmdPath"
+    $startupCommand = "@echo off`r`ncall `"$RunnerCmdPath`"`r`n"
     Invoke-Or-DryRun "write watch launcher $RunnerCmdPath" {
         Set-Content -Path $RunnerCmdPath -Value $runnerCommand -Encoding ASCII
     }
     Invoke-Or-DryRun "create scheduled task $TaskName" {
         & schtasks.exe /Create /TN $TaskName /TR $launcherCommand /SC ONLOGON /F | Out-Host
-        if ($LASTEXITCODE -ne 0) {
+        if ($LASTEXITCODE -eq 0) {
+            Remove-StartupFallbackIfPresent
+            Remove-RunRegistryFallbackIfPresent
+        } else {
             Write-Log "schtasks /Create failed with exit code $LASTEXITCODE; falling back to Startup folder"
-            $startupCommand = "@echo off`r`ncall `"$RunnerCmdPath`"`r`n"
             try {
                 Set-Content -Path $StartupFilePath -Value $startupCommand -Encoding ASCII -ErrorAction Stop
                 Write-Log "created Startup fallback: $StartupFilePath"
+                Remove-RunRegistryFallbackIfPresent
             } catch {
                 Write-Log "Startup fallback failed: $($_.Exception.Message); falling back to HKCU Run"
+                Remove-StartupFallbackIfPresent
                 Set-RunRegistryFallback -Command $launcherCommand
             }
-        }
-        if (Test-Path $StartupFilePath) {
-            $startupCommand = "@echo off`r`ncall `"$RunnerCmdPath`"`r`n"
-            Set-Content -Path $StartupFilePath -Value $startupCommand -Encoding ASCII
-            Write-Log "updated Startup fallback: $StartupFilePath"
-        }
-        if (Get-RunRegistryCommand) {
-            Set-RunRegistryFallback -Command $launcherCommand
         }
     }
     Write-Log "launcher command: $launcherCommand"

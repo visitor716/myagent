@@ -8,7 +8,11 @@ description: Log in to, monitor, diagnose, recover, and optionally install a Win
 
 ## Overview
 
-Use this skill to log in to Windows aTrust VPN and keep it available after the client exits, the tray disappears, the service stops, or tunnel processes vanish. Prefer supported Windows surfaces: service status, process checks, launching/focusing the aTrust tray, one-shot login assistance, and an optional startup watchdog.
+Use this skill to log in to Windows aTrust VPN and keep it available when it is already expected to be running. Prefer supported Windows surfaces: service status, process checks, launching/focusing the aTrust tray only for explicit `login` / `recover`, one-shot login assistance, and an optional startup watchdog.
+
+The background `watch` action respects manual client exit by default. If the user exits or closes the aTrust client/tray, `watch` must not actively relaunch aTrust. Use explicit `login`, explicit `recover`, or the opt-in `-RestartClientOnExit` switch only when relaunching the client after exit is wanted.
+
+When the background probe reports `LoggedIn`, the helper must not foreground, topmost, click, paste, or otherwise disturb the aTrust window. Foregrounding and DPI-click login input are allowed only after a background `WindowCapture` probe confirms `LoggedOut`.
 
 Do not bypass corporate VPN policy. aTrust session duration is often controlled server-side; this skill does not edit private aTrust databases, cookies, session storage, signed TOML configs, or stored credentials.
 
@@ -26,9 +30,9 @@ Supported actions:
 
 - `status`: read service/process/install/task state only.
 - `login-state`: classify the UI as logged in, logged out, or unknown using fixed-position color probes. It defaults to background window capture, does not start/unminimize/foreground aTrust, and returns `Unknown` if no capturable existing window is available; add `-ForegroundProbe` only for manual fallback troubleshooting.
-- `login`: start/recover aTrust, foreground the aTrust window, and either skip when already online or assist a one-shot login.
+- `login`: start/recover aTrust only when a login attempt is actually needed. If background probing reports `LoggedIn`, it skips without foregrounding the window; if the UI is confirmed `LoggedOut`, it can foreground the window and assist a one-shot login.
 - `recover`: start `aTrustService` if stopped, launch `aTrustTray.exe` if the tray is missing, and nudge the tray when the tunnel is absent.
-- `watch`: loop silently in the background, recover missing service/tray/tunnel state without foregrounding aTrust, optionally probe UI login state, and auto-login with a saved DPAPI credential only after a confirmed `LoggedOut` UI. For each confirmed logout event it may foreground the login window up to `-MaxReloginAttemptsPerLogout` times, default `3`, then waits for `LoggedIn` before resetting the per-logout counter.
+- `watch`: loop silently in the background, respect manual aTrust client/tray exit by default, optionally probe UI login state, and auto-login with a saved DPAPI credential only after a confirmed `LoggedOut` UI while the client is still running. For each confirmed logout event it rechecks the state immediately before login input, may foreground the login window up to `-MaxReloginAttemptsPerLogout` times, default `3`, then waits for `LoggedIn` before resetting the per-logout counter.
 - `install-task`: copy the helper to `%LOCALAPPDATA%\MyAgent\aTrustVpnKeeper\`, write a short `watch.cmd` launcher, and create a Windows logon Scheduled Task that points at the launcher. If Windows denies task creation, fall back to a current-user Startup folder `.cmd`, then to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Each Windows login starts a fresh watchdog. Each aTrust logout event can trigger up to 3 foreground relogin attempts by default.
 - `uninstall-task`: remove the watchdog task, Startup fallback, and HKCU Run fallback.
 - `task-status`: show the watchdog task, Startup fallback, or HKCU Run fallback state.
@@ -43,7 +47,7 @@ Useful options:
 - `-MaxRecoveries <n>`: stop watch after this many recoveries, default `3`; use `0` for a persistent unattended VPN relogin watchdog.
 - `-MaxChecks <n>`: stop watch after this many status checks, useful for bounded tests; `0` means unlimited.
 - `-ReloginCooldownSeconds <n>`: after a failed auto-login attempt, wait this many seconds before trying again, default `60`. This keeps the watcher alive without stealing focus every 10 seconds if aTrust blocks simulated input.
-- `-MaxReloginAttemptsPerLogout <n>`: maximum foreground auto-login attempts for one confirmed `LoggedOut` event, default `3`. The counter resets only after `LoggedIn`; ordinary `Unknown` probes do not start this counter, but an `Unknown` after a confirmed logout can consume the remaining attempts after the cooldown.
+- `-MaxReloginAttemptsPerLogout <n>`: maximum foreground auto-login attempts for one confirmed `LoggedOut` event, default `3`. The counter resets after `LoggedIn`; it can also start a fresh round when attempts were exhausted during `Unknown` probes and a later explicit `LoggedOut` login page becomes visible. Ordinary `Unknown` probes do not start this counter, and `Unknown` after a confirmed logout no longer consumes attempts because the watcher refuses to foreground or type without explicit `LoggedOut` evidence.
 - `-UnknownLoginStateThreshold <n>`: when `login-state` is `Unknown` for this many consecutive checks, keep logging that the state is unresolved, default `3`. `Unknown` no longer triggers foreground login because it is not confirmed logout evidence.
 - `-Username <name>`: optional username for one-shot UI login assistance.
 - `-InputMethod DpiClick|ClipboardPaste|SendKeys`: login input method, default `DpiClick`. Use `DpiClick` for the current aTrust Electron login page because it requires DPI-aware coordinate clicks before clipboard paste.
@@ -53,6 +57,7 @@ Useful options:
 - `-PromptForPassword`: prompt interactively via PowerShell `Read-Host -AsSecureString`.
 - `-AutoLogin`: use the saved DPAPI credential to run the login flow. For `login`, this does not trust process/tunnel health as proof of login state; it continues with the UI login attempt unless `-NoSubmit` is used.
 - `-ProbeLoginState`: during `watch`, classify whether the UI is logged out even when service/process/tunnel health still looks normal. The watcher uses background window capture and should not steal focus. `install-task -AutoLogin` enables this automatically.
+- `-RestartClientOnExit`: opt in to the old watchdog behavior that relaunches aTrust when the client/tray is absent. Do not use this when the user wants manual aTrust exit to stay respected.
 - `-ForegroundProbe`: fallback probe mode for manual `login-state` troubleshooting that brings aTrust to the foreground and uses screen capture. `watch` and `install-task` ignore foreground probing so scheduled monitoring stays silent.
 - `-DryRun`: print intended recovery or task actions without changing Windows state.
 - `-ForceRestart`: explicitly restart aTrust tray processes before recovery.
@@ -66,9 +71,12 @@ Known working local login path:
 - Do not treat `Healthy=True`, `aTrustXtunnel.exe`, or service/process presence as proof that the user is still logged in. Long idle timeout can leave service/process/tunnel looking healthy while the visible aTrust UI is already back on the login page. For timeout/logout incidents, always check `login-state` or run `watch` with `-ProbeLoginState`.
 - Current calibrated color-probe thresholds: login page is `LoggedOut` when the blue login button region ratio is greater than `0.25`, or when the wider window scan sees enough aTrust blue to catch the server-side logout notification/local password page; workbench is `LoggedIn` when the green account badge region ratio is greater than `0.03`. Known local samples were `loginBlue=0.716, loggedInGreen=0.000` when logged out, `loginBlueWide=0.019` on the logout notification window, and `loginBlue=0.000, loggedInGreen=0.108` when logged in.
 - aTrust may expose the small logout notification as the only `MainWindowHandle`; the helper enumerates all aTrust top-level windows and prefers the largest main window for clicks, while allowing the small notification window only as logout evidence during background state probing.
-- During timeout/logout transition, aTrust may show an intermediate confirmation modal. In that state background capture can report `Unknown` with both ratios at `0.000` for many checks, while service/tunnel still look healthy. The watcher stays silent on `Unknown`; it only foregrounds aTrust once after the background probe confirms `LoggedOut`.
+- During timeout/logout transition, aTrust may show an intermediate confirmation modal. In that state background capture can report `Unknown` with both ratios at `0.000` for many checks, while service/tunnel still look healthy. The watcher stays silent on `Unknown`; it only foregrounds aTrust once after the background probe confirms `LoggedOut`. `Unknown` checks after a login attempt are logged but do not consume the remaining per-logout attempts.
+- If the watcher has exhausted the per-logout attempts while aTrust is minimized or otherwise only reports `Unknown`, a later explicit `LoggedOut` probe such as `LoginButtonVisible` starts a fresh attempt round for that visible login page. This prevents the watcher from staying permanently exhausted after the real login page appears.
 - If a future manual coordinate test clicks the wrong window or misses the aTrust menu under Windows scaling, retry through the helper path or a PowerShell click helper that first calls `SetProcessDPIAware()`. Non-DPI-aware temporary click snippets can land on the wrong physical coordinates.
 - Monitoring stays silent. Unattended relogin may still briefly foreground aTrust once per confirmed logout event because the current login form needs DPI clicks and clipboard paste. The helper records the previous foreground window before login input and attempts to restore it immediately after sending credentials.
+- `Login-Atrust -WatchMode` rechecks background `login-state` immediately before foregrounding or clicking. If the state is `LoggedIn` or `Unknown`, it skips login input and leaves the active window alone.
+- Manual client exit stays respected in `watch`: if aTrust tray/main window is gone, the watcher logs the state and does not call `recover` or start `aTrustTray.exe`. Use `-RestartClientOnExit` only when automatic relaunch after exit is explicitly desired.
 - If auto-login throws or aTrust refuses foreground activation, the watcher must log `watch login attempt failed` and continue running. Do not let a single failed relogin kill the watchdog.
 - When invoking the installed helper through `powershell.exe -Command` from Bash, wrap the PowerShell command in single quotes so Bash does not consume `$env:LOCALAPPDATA`:
 
