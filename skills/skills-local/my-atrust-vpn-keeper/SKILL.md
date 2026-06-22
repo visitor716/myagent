@@ -42,7 +42,7 @@ Supported actions:
 
 Useful options:
 
-- `-IntervalSeconds <n>`: watch interval, default `60`.
+- `-IntervalSeconds <n>`: watch interval, default `60`, minimum `1`. Use `1` for near-immediate relogin after the background probe detects `LoggedOut`.
 - `-ConsecutiveFailures <n>`: failures before recover, default `2`.
 - `-MaxRecoveries <n>`: stop watch after this many recoveries, default `3`; use `0` for a persistent unattended VPN relogin watchdog.
 - `-MaxChecks <n>`: stop watch after this many status checks, useful for bounded tests; `0` means unlimited.
@@ -116,10 +116,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w /home/zhan
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w /home/zhanxp/projects/myagent/skills/skills-local/my-atrust-vpn-keeper/scripts/atrust_vpn_keeper.ps1)" -Action credential-status
 ```
 
-For fast timeout monitoring, use a 10-second watcher and keep UI probing enabled:
+For near-immediate timeout/logout relogin, use a 1-second watcher and keep UI probing enabled:
 
 ```bash
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w /home/zhanxp/projects/myagent/skills/skills-local/my-atrust-vpn-keeper/scripts/atrust_vpn_keeper.ps1)" -Action install-task -Username '<username>' -AutoLogin -ProbeLoginState -InputMethod DpiClick -IntervalSeconds 10 -PostLoginWaitSeconds 12 -ReloginCooldownSeconds 60 -MaxReloginAttemptsPerLogout 3 -UnknownLoginStateThreshold 3 -MaxRecoveries 0
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w /home/zhanxp/projects/myagent/skills/skills-local/my-atrust-vpn-keeper/scripts/atrust_vpn_keeper.ps1)" -Action install-task -Username '<username>' -AutoLogin -ProbeLoginState -InputMethod DpiClick -IntervalSeconds 1 -PostLoginWaitSeconds 12 -ReloginCooldownSeconds 60 -MaxReloginAttemptsPerLogout 3 -UnknownLoginStateThreshold 3 -MaxRecoveries 0
 powershell.exe -NoProfile -Command 'Start-Process -WindowStyle Hidden -FilePath "$env:LOCALAPPDATA\MyAgent\aTrustVpnKeeper\watch.cmd"'
 ```
 
@@ -150,7 +150,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w /home/zhan
 
 Use this checklist when the user asks whether long-idle logout is monitored correctly:
 
-1. Confirm the watcher is actually running with `-IntervalSeconds 10 -AutoLogin -ProbeLoginState -UnknownLoginStateThreshold 3 -MaxRecoveries 0`:
+1. Confirm the watcher is actually running with `-IntervalSeconds 1 -AutoLogin -ProbeLoginState -UnknownLoginStateThreshold 3 -MaxRecoveries 0`:
 
 ```bash
 powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match "atrust_vpn_keeper.ps1" -and $_.CommandLine -match "Action watch" -and $_.ProcessId -ne $PID } | Select-Object ProcessId,Name,CommandLine | Format-List'
@@ -168,7 +168,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w /home/zhan
 powershell.exe -NoProfile -Command 'Get-Content "$env:LOCALAPPDATA\MyAgent\aTrustVpnKeeper\keeper.log" -Tail 40'
 ```
 
-4. Simulate the service-side timeout by manually choosing aTrust UI `注销登录` from the logged-in workbench, then wait one 10-second interval. A passing run may show `login-state probe state=LoggedOut`; it should then log `logged-out UI detected; relogin attempt [1/3]`, `loaded saved aTrust credential`, possible confirmation clicks, `sent aTrust login input via DpiClick`, then `login-state probe state=LoggedIn`. If the first attempt leaves the window minimized or the probe turns `Unknown`, the watcher may continue attempts `[2/3]` and `[3/3]` only because the same logout event was already confirmed. If the probe is `Unknown` without a prior confirmed logout, the watcher stays silent and must not foreground the VPN window.
+4. Simulate the service-side timeout by manually choosing aTrust UI `注销登录` from the logged-in workbench, then wait for the next 1-second probe. A passing run may show `login-state probe state=LoggedOut`; it should immediately log `logged-out UI detected; relogin attempt [1/3]`, `loaded saved aTrust credential`, possible confirmation clicks, `sent aTrust login input via DpiClick`, then `login-state probe state=LoggedIn`. If the first attempt leaves the window minimized or the probe turns `Unknown`, the watcher may continue attempts `[2/3]` and `[3/3]` only because the same logout event was already confirmed. If the probe is `Unknown` without a prior confirmed logout, the watcher stays silent and must not foreground the VPN window.
 
 5. If `status` says healthy but `login-state` says `LoggedOut`, trust `login-state`; the monitor must relogin even though service/process/tunnel checks are green.
 

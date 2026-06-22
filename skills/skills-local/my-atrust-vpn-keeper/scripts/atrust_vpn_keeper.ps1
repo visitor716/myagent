@@ -1208,8 +1208,8 @@ function Invoke-AtrustRecoverForWatch {
 }
 
 function Watch-Atrust {
-    if ($IntervalSeconds -lt 10) {
-        throw "IntervalSeconds must be at least 10."
+    if ($IntervalSeconds -lt 1) {
+        throw "IntervalSeconds must be at least 1."
     }
     if ($ConsecutiveFailures -lt 1) {
         throw "ConsecutiveFailures must be at least 1."
