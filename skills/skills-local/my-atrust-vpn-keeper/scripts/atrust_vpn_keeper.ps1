@@ -35,6 +35,7 @@ $LogPath = Join-Path $AppDir "keeper.log"
 $InstalledScriptPath = Join-Path $AppDir "atrust_vpn_keeper.ps1"
 $RunnerCmdPath = Join-Path $AppDir "watch.cmd"
 $CredentialPath = Join-Path $AppDir "credential.json"
+$LogoutLockoutPath = Join-Path $AppDir "logout-lockout.json"
 $StartupFilePath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)) "$TaskName.cmd"
 $RunRegistryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $RunRegistryValueName = $TaskName
@@ -856,6 +857,35 @@ function Clear-AtrustCredential {
     }
 }
 
+function Test-AtrustLogoutLockout {
+    return (Test-Path $LogoutLockoutPath)
+}
+
+function Set-AtrustLogoutLockout {
+    param(
+        [int]$Attempts,
+        [string]$Reason
+    )
+
+    Ensure-AppDir
+    [pscustomobject]@{
+        CreatedAt = (Get-Date).ToString("o")
+        Attempts = $Attempts
+        MaxAttempts = $MaxReloginAttemptsPerLogout
+        Reason = $Reason
+    } | ConvertTo-Json -Depth 3 | Set-Content -Path $LogoutLockoutPath -Encoding UTF8
+    Write-Log "auto-login locked until LoggedIn after relogin attempts exhausted [$Attempts/$MaxReloginAttemptsPerLogout]"
+}
+
+function Clear-AtrustLogoutLockoutIfPresent {
+    param([string]$Reason)
+
+    if (Test-Path $LogoutLockoutPath) {
+        Remove-Item -Path $LogoutLockoutPath -Force
+        Write-Log "cleared auto-login lockout $Reason"
+    }
+}
+
 function Show-CredentialStatus {
     if (-not (Test-Path $CredentialPath)) {
         [pscustomobject]@{
@@ -1236,7 +1266,11 @@ function Watch-Atrust {
     $unknownLoginStateCount = 0
     $confirmedLogoutActive = $false
     $reloginAttemptsForLogout = 0
-    $lastLoginStateName = $null
+    $logoutLockoutActive = Test-AtrustLogoutLockout
+    $logoutLockoutLogged = $false
+    if ($logoutLockoutActive) {
+        Write-Log "existing auto-login lockout loaded; waiting for LoggedIn before resetting relogin attempts"
+    }
     while ($true) {
         $checks += 1
         try {
@@ -1249,24 +1283,29 @@ function Watch-Atrust {
                 if ($AutoLogin -and $ProbeLoginState) {
                     $loginState = Get-AtrustLoginState | Select-Object -Last 1
                     Write-Log "healthy service=$($snapshot.ServiceStatus) tray=$($snapshot.TrayCount) agent=$($snapshot.AgentCount) tunnel=$($snapshot.TunnelCount) loginState=$($loginState.State)"
-                    $previousLoginStateName = $lastLoginStateName
-                    $lastLoginStateName = $loginState.State
-                    if ($loginState.State -eq "LoggedOut" -and $previousLoginStateName -and $previousLoginStateName -ne "LoggedOut" -and $confirmedLogoutActive -and $reloginAttemptsForLogout -ge $MaxReloginAttemptsPerLogout) {
-                        Write-Log "explicit logged-out UI detected after $previousLoginStateName state; resetting relogin attempts for the visible login page"
-                        $confirmedLogoutActive = $false
-                        $reloginAttemptsForLogout = 0
-                        $unknownLoginStateCount = 0
-                    }
                     if ($loginState.State -eq "LoggedOut") {
                         $unknownLoginStateCount = 0
                         $confirmedLogoutActive = $true
-                        if ($reloginAttemptsForLogout -ge $MaxReloginAttemptsPerLogout) {
+                        if ($logoutLockoutActive) {
+                            if (-not $logoutLockoutLogged) {
+                                Write-Log "logged-out UI still detected; auto-login remains locked until LoggedIn"
+                                $logoutLockoutLogged = $true
+                            }
+                        } elseif ($reloginAttemptsForLogout -ge $MaxReloginAttemptsPerLogout) {
                             Write-Log "logged-out UI still detected; relogin attempts exhausted for this logout event [$reloginAttemptsForLogout/$MaxReloginAttemptsPerLogout]"
+                            $logoutLockoutActive = $true
+                            $logoutLockoutLogged = $false
+                            Set-AtrustLogoutLockout -Attempts $reloginAttemptsForLogout -Reason "attempts exhausted before next LoggedOut probe"
                         } elseif (Test-ReloginCooldownElapsed -LastAttemptAt $lastLoginAttemptAt) {
                             $lastLoginAttemptAt = Get-Date
                             $reloginAttemptsForLogout += 1
                             Invoke-AtrustLoginForWatch -Reason "logged-out UI detected; relogin attempt [$reloginAttemptsForLogout/$MaxReloginAttemptsPerLogout]" | Out-Null
                             $recoveries += 1
+                            if ($reloginAttemptsForLogout -ge $MaxReloginAttemptsPerLogout) {
+                                $logoutLockoutActive = $true
+                                $logoutLockoutLogged = $false
+                                Set-AtrustLogoutLockout -Attempts $reloginAttemptsForLogout -Reason "attempt limit reached after login attempt"
+                            }
                             if ($MaxRecoveries -gt 0 -and $recoveries -ge $MaxRecoveries) {
                                 Write-Log "watch stopped after MaxRecoveries=$MaxRecoveries"
                                 return
@@ -1288,6 +1327,9 @@ function Watch-Atrust {
                         $unknownLoginStateCount = 0
                         $confirmedLogoutActive = $false
                         $reloginAttemptsForLogout = 0
+                        $logoutLockoutActive = $false
+                        $logoutLockoutLogged = $false
+                        Clear-AtrustLogoutLockoutIfPresent -Reason "after LoggedIn"
                     }
                 } else {
                     Write-Log "healthy service=$($snapshot.ServiceStatus) tray=$($snapshot.TrayCount) agent=$($snapshot.AgentCount) tunnel=$($snapshot.TunnelCount)"
@@ -1299,7 +1341,9 @@ function Watch-Atrust {
                     $unknownLoginStateCount = 0
                     $confirmedLogoutActive = $false
                     $reloginAttemptsForLogout = 0
-                    $lastLoginStateName = $null
+                    $logoutLockoutActive = $false
+                    $logoutLockoutLogged = $false
+                    Clear-AtrustLogoutLockoutIfPresent -Reason "after client exit"
                     Write-Log "client not running; respecting manual exit and not starting aTrust tray missing=$($snapshot.Missing) service=$($snapshot.ServiceStatus) tray=$($snapshot.TrayCount) mainTray=$($snapshot.MainTrayCount) agent=$($snapshot.AgentCount) tunnel=$($snapshot.TunnelCount)"
                 } else {
                     $failureCount += 1
