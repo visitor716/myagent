@@ -67,7 +67,7 @@ Keep runtime marker contracts stable and non-destructive when overlays are appli
   `/home/zhanxp/projects/myagent/docs/agent-memory/`. Update `open-loops.md`
   for paused follow-ups, `decisions.md` for durable choices, and
   `codex-operating-memory.md` for stable preferences.
-- `scripts/apps/codex/codex_heartbeat.py` is the local heartbeat generator and should stay
+- `scripts/apps/codex/codex_heartbeat/codex_heartbeat.py` is the local heartbeat generator and should stay
   non-invasive: collect status, write memory snapshots, do not launch fresh
   browsers, and do not enable MCP.
 </user_runtime_preferences>

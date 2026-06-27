@@ -569,7 +569,7 @@ cmd_codex_autonomy() {
     cmd_codex_full_auto
     install_codex_memory_link
     install_codex_heartbeat_timer
-    "$PROJECT_DIR/scripts/apps/codex/codex_heartbeat.py" --quiet || log_warn "首次 heartbeat 生成失败，可稍后运行: cheartbeat"
+    "$PROJECT_DIR/scripts/apps/codex/codex_heartbeat/codex_heartbeat.py" --quiet || log_warn "首次 heartbeat 生成失败，可稍后运行: cheartbeat"
 
     log_success "Codex 自主管理配置已安装"
     log_info "长期记忆: $CODEX_MEMORY_RUNTIME"
@@ -616,8 +616,8 @@ cmd_validate() {
         log_warn "Codex 全自动 bash 入口模板不存在: $CODEX_ALIAS_SOURCE"
     fi
 
-    if [[ -f "$PROJECT_DIR/scripts/apps/codex/codex_heartbeat.py" ]]; then
-        if python3 -m py_compile "$PROJECT_DIR/scripts/apps/codex/codex_heartbeat.py"; then
+    if [[ -f "$PROJECT_DIR/scripts/apps/codex/codex_heartbeat/codex_heartbeat.py" ]]; then
+        if python3 -m py_compile "$PROJECT_DIR/scripts/apps/codex/codex_heartbeat/codex_heartbeat.py"; then
             log_success "Codex heartbeat 脚本语法正确"
         else
             log_error "Codex heartbeat 脚本语法错误"

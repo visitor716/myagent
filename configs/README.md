@@ -80,7 +80,7 @@ bash configs/sync.sh codex-autonomy
 - 持久上下文：`docs/agent-memory/codex-operating-memory.md`、`decisions.md`、
   `open-loops.md`
 - 可复用工作流：`skills/skills-local/<skill>/SKILL.md`
-- 本机自动化：`scripts/apps/codex/codex_heartbeat.py` 和 `codex-heartbeat.timer`
+- 本机自动化：`scripts/apps/codex/codex_heartbeat/codex_heartbeat.py` 和 `codex-heartbeat.timer`
 - 运行时模板：`configs/codex/config.toml` 和
   `configs/codex/bash_aliases.full-auto.sh`
 - 验证入口：`bash configs/sync.sh validate`

@@ -49,7 +49,7 @@ bash <skill-dir>/scripts/tmux_process_windows.sh send-text <target> "npm run bui
 bash <skill-dir>/scripts/tmux_process_windows.sh stop <target>
 ```
 
-On this machine, `/home/zhanxp/projects/myagent/scripts/tmux_process_windows.sh` is also kept as the stable local script entrypoint.
+On this machine, `/home/zhanxp/projects/myagent/scripts/tmux_process_windows/tmux_process_windows.sh` is also kept as the stable local script entrypoint.
 
 Supported actions:
 

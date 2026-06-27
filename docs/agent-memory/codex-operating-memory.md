@@ -76,7 +76,7 @@ Last reviewed: 2026-05-25
 
 ## Heartbeat
 
-- `scripts/apps/codex/codex_heartbeat.py` produces the latest local status in
+- `scripts/apps/codex/codex_heartbeat/codex_heartbeat.py` produces the latest local status in
   `docs/agent-memory/heartbeat.md`.
 - The user prefers an automatic heartbeat loop. A user-level systemd timer may
   run it every 30 minutes on this machine.
