@@ -44,4 +44,6 @@ bash configs/sync.sh backup      # 运行时 → 模板（备份后需脱敏）
 
 浏览器自动化使用 `wsl-windows-chrome` 技能的专用 Windows Chrome/Edge 配置文件。
 
+从 Bash/WSL 调用 PowerShell 时，含 `$env:`、`$_`、JSON 或正则的命令必须避免 Bash 双引号展开；短命令用单引号包住 PowerShell 片段，复杂逻辑写 `.ps1` 后用 `-File` 执行。
+
 长期记忆保存在 `docs/agent-memory/` 下。

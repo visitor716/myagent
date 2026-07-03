@@ -88,6 +88,12 @@ SECONDARY_ENTRY_SPLIT_RE = re.compile(r'(?<=[。；;])\s*(?=\d+[A-Za-z](?:\d+)?)
 ENTRY_STRIP_CHARS = ' \n\t\r，,。；;'
 WINDOWS_DRIVE_RE = re.compile(r'^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$')
 WSL_MOUNT_RE = re.compile(r'^/mnt/(?P<drive>[A-Za-z])/(?P<rest>.*)$')
+DATE_MARKER_LINE_RE = re.compile(
+    r'^\s*(?:日期|时间)?\s*[:：]?\s*'
+    r'(?:(?P<year>\d{4})\s*[-/.年]\s*)?'
+    r'(?P<month>\d{1,2})\s*[-/.月]\s*(?P<day>\d{1,2})'
+    r'\s*(?:日|号)?\s*(?:日报|日報|记录|紀錄|调试记录|工作记录)?\s*[：:，,。；;、-]*\s*$'
+)
 PROCESS_VERB_RE = re.compile(
     r'(调整|更换|清洗|擦拭|断电|插拔|复位|优化|移动|校正|校准|补偿|检查|清理|处理|交付|重调|重新|重启|联系|恢复)'
 )
@@ -131,6 +137,7 @@ class ParsedEntry:
     process: str
     is_spot: bool
     channel: str
+    report_date: str = ''
     warnings: list[str] = field(default_factory=list)
 
 
@@ -252,7 +259,7 @@ def normalize_whitespace(text: str) -> str:
     return '\n'.join(line for line in lines if line)
 
 
-def split_entries(raw_text: str) -> list[str]:
+def split_entry_section(raw_text: str) -> list[str]:
     normalized = normalize_whitespace(raw_text)
     if not normalized:
         return []
@@ -268,6 +275,10 @@ def split_entries(raw_text: str) -> list[str]:
         sub_entries = SECONDARY_ENTRY_SPLIT_RE.split(entry)
         expanded.extend(part.strip(ENTRY_STRIP_CHARS) for part in sub_entries if part.strip(ENTRY_STRIP_CHARS))
     return expanded
+
+
+def split_entries(raw_text: str) -> list[str]:
+    return split_entry_section(raw_text)
 
 
 def extract_machine(text: str) -> tuple[str, str]:
@@ -383,7 +394,7 @@ def base_machine(machine_full: str) -> str:
     return machine_full
 
 
-def parse_entry(entry_text: str) -> ParsedEntry:
+def parse_entry(entry_text: str, report_date: str = '') -> ParsedEntry:
     machine_full, process_text = extract_machine(entry_text)
     abnormal = extract_abnormal(process_text)
     is_spot = detect_spot(process_text, abnormal)
@@ -403,6 +414,7 @@ def parse_entry(entry_text: str) -> ParsedEntry:
         process=process_text or entry_text.strip(),
         is_spot=is_spot,
         channel=channel,
+        report_date=report_date,
         warnings=warnings,
     )
 
@@ -427,6 +439,62 @@ def format_spot_date(raw_date: str) -> str:
 def format_file_date(raw_date: str) -> str:
     year, month, day = parse_date_string(raw_date)
     return f'{year:04d}-{month:02d}-{day:02d}'
+
+
+def date_marker_to_iso(line: str, default_report_date: str) -> str | None:
+    match = DATE_MARKER_LINE_RE.match(line)
+    if not match:
+        return None
+
+    default_year, _, _ = parse_date_string(default_report_date)
+    year = int(match.group('year') or default_year)
+    month = int(match.group('month'))
+    day = int(match.group('day'))
+    try:
+        normalized = date(year, month, day)
+    except ValueError:
+        return None
+    return normalized.isoformat()
+
+
+def split_entries_with_dates(raw_text: str, default_report_date: str) -> list[tuple[str, str]]:
+    normalized = normalize_whitespace(raw_text)
+    if not normalized:
+        return []
+
+    current_date = format_file_date(default_report_date)
+    sections: list[tuple[str, list[str]]] = []
+    section_lines: list[str] = []
+    saw_date_marker = False
+
+    def flush_section() -> None:
+        nonlocal section_lines
+        if section_lines:
+            sections.append((current_date, section_lines))
+            section_lines = []
+
+    for line in normalized.split('\n'):
+        marker_date = date_marker_to_iso(line, current_date)
+        if marker_date is not None:
+            flush_section()
+            current_date = marker_date
+            saw_date_marker = True
+            continue
+        section_lines.append(line)
+    flush_section()
+
+    if not saw_date_marker:
+        return [(entry, current_date) for entry in split_entry_section(normalized)]
+
+    dated_entries: list[tuple[str, str]] = []
+    for section_date, lines in sections:
+        for entry in split_entry_section('\n'.join(lines)):
+            dated_entries.append((entry, section_date))
+    return dated_entries
+
+
+def newest_date_entries_first(dated_entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    return sorted(dated_entries, key=lambda item: item[1], reverse=True)
 
 
 def format_month_folder(raw_date: str) -> str:
@@ -459,9 +527,10 @@ def normalize_main_review_issue(abnormal: str) -> str:
 def build_main_rows(entries: Iterable[ParsedEntry], metadata: dict[str, str]) -> list[list[str]]:
     rows: list[list[str]] = []
     for entry in entries:
+        row_date = entry.report_date or metadata['date']
         rows.append(
             [
-                format_main_date(metadata['date']),
+                format_main_date(row_date),
                 metadata['group'],
                 metadata['base'],
                 metadata['device'],
@@ -479,10 +548,10 @@ def build_main_rows(entries: Iterable[ParsedEntry], metadata: dict[str, str]) ->
 
 def build_spot_rows(entries: Iterable[ParsedEntry], metadata: dict[str, str]) -> list[list[str]]:
     rows: list[list[str]] = []
-    spot_date = format_spot_date(metadata['date'])
     for entry in entries:
         if not entry.is_spot:
             continue
+        spot_date = format_spot_date(entry.report_date or metadata['date'])
         rows.append(
             [
                 metadata['area'],
@@ -1481,9 +1550,9 @@ def build_metadata(args: argparse.Namespace) -> dict[str, str]:
 
 
 def prepare_report(args: argparse.Namespace, report_text: str, parser: argparse.ArgumentParser) -> GeneratedReport:
-    entry_texts = split_entries(report_text)
+    dated_entry_texts = split_entries_with_dates(report_text, args.date)
 
-    if not entry_texts:
+    if not dated_entry_texts:
         parser.error('未读取到日报内容。')
 
     metadata = build_metadata(args)
@@ -1502,7 +1571,10 @@ def prepare_report(args: argparse.Namespace, report_text: str, parser: argparse.
         metadata['chart_target_sheet'] = str(detected_target['sheet_name'])
         metadata['chart_start_cell'] = str(detected_target['start_cell'])
 
-    parsed_entries = [parse_entry(text) for text in entry_texts]
+    parsed_entries = [
+        parse_entry(text, report_date=entry_date)
+        for text, entry_date in newest_date_entries_first(dated_entry_texts)
+    ]
     warnings = [warning for entry in parsed_entries for warning in entry.warnings]
     main_rows = build_main_rows(parsed_entries, metadata)
     spot_rows = build_spot_rows(parsed_entries, metadata)

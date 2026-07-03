@@ -83,6 +83,18 @@ Last reviewed: 2026-05-25
 - Heartbeat checks should remain non-invasive: collect status, do not mutate
   project code, do not launch fresh browsers, and do not enable MCP.
 
+## Windows Network Incidents
+
+- When the user reports the machine disconnected from the network or rebooted
+  after a suspected network/power-driver incident, inspect
+  `C:\Users\zhanxp\Desktop\network-power-monitor` first.
+- Start with `heartbeat.csv` for the timeline, then `latest.txt`, then the
+  snapshots immediately before the disconnect or bugcheck time under
+  `snapshots\`.
+- Treat this monitor as evidence only. It is read-only and does not replace
+  Windows event logs, dump analysis, or adapter/driver checks when the monitor
+  points to WLAN, Netwtw, Kernel-Power, DNS, power-plan, route, or proxy changes.
+
 ## Model And Effort
 
 - Default Codex config may use strong reasoning for autonomous work.
