@@ -1,0 +1,262 @@
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
+const DEFAULT_BASE_BRANCH = 'master';
+
+export interface WorktreeStatus {
+  workerName: string;
+  path: string;
+  branch: string;
+  exists: boolean;
+  initialized: boolean;
+  gitBranch?: string;
+  head?: string;
+  error?: string;
+}
+
+export interface ExecutionWorkspace {
+  mainRepo: string;
+  effectiveWorkspace: string;
+  useWorktree: boolean;
+  worktreePath?: string;
+  worktreeBranch?: string;
+}
+
+function normalizeWorkerName(workerName: string): string {
+  const normalized = workerName
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9._-]+/g, '-');
+
+  if (!normalized) {
+    throw new Error('Worker name is empty');
+  }
+
+  return normalized;
+}
+
+async function runGit(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    timeout: 60_000,
+    maxBuffer: 1024 * 1024,
+  });
+  return stdout.toString().trim();
+}
+
+/**
+ * 获取 Worktree 根目录
+ *
+ * 默认路径: {项目根目录}/../../worktrees/{项目名}
+ * 可通过环境变量 TG_AGENT_WORKTREE_ROOT 覆盖
+ */
+export function getWorktreeRoot(): string {
+  const configuredRoot = process.env.TG_AGENT_WORKTREE_ROOT?.trim() || process.env.WORKTREE_ROOT?.trim();
+  if (configuredRoot) {
+    return path.resolve(configuredRoot);
+  }
+
+  return path.resolve(process.cwd(), '..', '..', 'worktrees', path.basename(process.cwd()));
+}
+
+/**
+ * 获取指定 Worker 的 Worktree 路径
+ *
+ * 路径格式: {worktreeRoot}/{workerName}
+ */
+export function getWorktreePath(workerName: string): string {
+  return path.join(getWorktreeRoot(), normalizeWorkerName(workerName));
+}
+
+/**
+ * 获取指定 Worker 的 Worktree 分支名
+ *
+ * 分支格式: wt/{workerName}
+ */
+export function getWorktreeBranch(workerName: string): string {
+  return `wt/${normalizeWorkerName(workerName)}`;
+}
+
+/**
+ * 获取执行工作目录配置
+ *
+ * useWorktree=false: 使用主项目 workspace
+ * useWorktree=true: 使用 worktree 路径
+ */
+export function getExecutionWorkspace(
+  workerName: string,
+  mainRepo: string,
+  useWorktree: boolean = false
+): ExecutionWorkspace {
+  const resolvedMainRepo = path.resolve(mainRepo);
+
+  if (!useWorktree) {
+    return {
+      mainRepo: resolvedMainRepo,
+      effectiveWorkspace: resolvedMainRepo,
+      useWorktree: false,
+    };
+  }
+
+  const worktreePath = getWorktreePath(workerName);
+  const worktreeBranch = getWorktreeBranch(workerName);
+
+  return {
+    mainRepo: resolvedMainRepo,
+    effectiveWorkspace: worktreePath,
+    useWorktree: true,
+    worktreePath,
+    worktreeBranch,
+  };
+}
+
+/**
+ * 获取 Worktree 状态
+ */
+export async function getWorktreeStatus(workerName: string, mainRepo: string): Promise<WorktreeStatus> {
+  const worktreePath = getWorktreePath(workerName);
+  const branch = getWorktreeBranch(workerName);
+
+  if (!fs.existsSync(worktreePath)) {
+    return {
+      workerName,
+      path: worktreePath,
+      branch,
+      exists: false,
+      initialized: false,
+    };
+  }
+
+  // 检查是否是有效的 git worktree
+  try {
+    await runGit(worktreePath, ['rev-parse', '--is-inside-work-tree']);
+  } catch {
+    return {
+      workerName,
+      path: worktreePath,
+      branch,
+      exists: true,
+      initialized: false,
+      error: `Path exists but is not a git worktree: ${worktreePath}`,
+    };
+  }
+
+  const gitBranch = await runGit(worktreePath, ['branch', '--show-current']).catch(() => undefined);
+  const head = await runGit(worktreePath, ['rev-parse', '--short', 'HEAD']).catch(() => undefined);
+  const initialized = gitBranch === branch;
+
+  return {
+    workerName,
+    path: worktreePath,
+    branch,
+    exists: true,
+    initialized,
+    gitBranch,
+    head,
+    error: initialized ? undefined : `Expected branch ${branch}, found ${gitBranch ?? 'detached HEAD'}`,
+  };
+}
+
+/**
+ * 确保 Worktree 存在并初始化
+ *
+ * 如果 worktree 不存在，自动创建
+ * 如果分支不存在，基于 master 创建新分支
+ */
+export async function ensureWorktree(workerName: string, mainRepo: string): Promise<WorktreeStatus> {
+  const resolvedMainRepo = path.resolve(mainRepo);
+  const worktreePath = getWorktreePath(workerName);
+  const branch = getWorktreeBranch(workerName);
+
+  // 检查主仓库
+  await runGit(resolvedMainRepo, ['rev-parse', '--is-inside-work-tree']);
+  await runGit(resolvedMainRepo, ['rev-parse', '--verify', DEFAULT_BASE_BRANCH]);
+
+  // 检查当前状态
+  const currentStatus = await getWorktreeStatus(workerName, resolvedMainRepo);
+  if (currentStatus.initialized) {
+    return currentStatus;
+  }
+
+  // 创建 worktree
+  fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
+
+  // 检查分支是否存在
+  let branchExists = false;
+  try {
+    await runGit(resolvedMainRepo, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+    branchExists = true;
+  } catch {
+    branchExists = false;
+  }
+
+  const args = branchExists
+    ? ['worktree', 'add', worktreePath, branch]
+    : ['worktree', 'add', '-b', branch, worktreePath, DEFAULT_BASE_BRANCH];
+
+  await runGit(resolvedMainRepo, args);
+  return getWorktreeStatus(workerName, resolvedMainRepo);
+}
+
+/**
+ * 构建 Worker Worktree 信息（固定 worktree 方案）
+ *
+ * 路径格式: {worktreesRoot}/{projectName}/{workerName}
+ * 分支格式: wt/{workerName}
+ */
+export interface WorktreeInfoInput {
+  workerName: string;
+  projectName: string;
+  mainWorkspace: string;
+  worktreesRoot?: string;
+}
+
+export interface WorktreeInfo {
+  workerName: string;
+  worktreePath: string;
+  branchName: string;
+  isValid: boolean;
+  error?: string;
+}
+
+export function buildWorkerWorktreeInfo(input: WorktreeInfoInput): WorktreeInfo {
+  const { workerName, projectName, mainWorkspace, worktreesRoot } = input;
+
+  if (!workerName?.trim()) {
+    return { workerName: '', worktreePath: '', branchName: '', isValid: false, error: 'workerName is required' };
+  }
+
+  if (!projectName?.trim()) {
+    return { workerName, worktreePath: '', branchName: '', isValid: false, error: 'projectName is required' };
+  }
+
+  const normalizedWorkerName = workerName.trim();
+  const normalizedProjectName = projectName.trim();
+  const rootDir = worktreesRoot?.trim() || '/home/zhanxp/worktrees';
+
+  const worktreePath = `${rootDir}/${normalizedProjectName}/${normalizedWorkerName}`;
+  const branchName = `wt/${normalizedWorkerName}`;
+
+  // 验证 worktreePath 不能是主项目的子目录
+  if (mainWorkspace && worktreePath.startsWith(mainWorkspace + '/')) {
+    return {
+      workerName: normalizedWorkerName,
+      worktreePath,
+      branchName,
+      isValid: false,
+      error: 'worktreePath cannot be a subdirectory of mainWorkspace',
+    };
+  }
+
+  return {
+    workerName: normalizedWorkerName,
+    worktreePath,
+    branchName,
+    isValid: true,
+  };
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "TG Gateway Manager"
+  short_description: "Manage TG gateway release, recovery, monitor, and UX"
+  default_prompt: "Use $my-tg-gateway-manager to diagnose and operate tg-agent-gateway safely."
+policy:
+  allow_implicit_invocation: true

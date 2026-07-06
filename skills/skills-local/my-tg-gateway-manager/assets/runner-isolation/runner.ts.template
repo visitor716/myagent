@@ -1,0 +1,76 @@
+import { Runner, RunnerInput, RunnerResult } from '../tasks/types.js';
+import { MockRunner } from './mockRunner.js';
+import { CodexRunner } from './codexRunner.js';
+import { ClaudeCodeRunner } from './claudeCodeRunner.js';
+import { HermesRunner } from './hermesRunner.js';
+import { logger } from '../utils/logger.js';
+import { resolveRunnerWorkspace } from './runnerWorkspace.js';
+
+/**
+ * 获取有效的执行工作目录
+ *
+ * 优先级：effectiveWorkspace > worktreePath > workspace
+ * 如果 useWorktree=true 但 worktreePath 不存在，返回错误
+ */
+export function getEffectiveCwd(input: RunnerInput): { cwd: string; error?: string } {
+  try {
+    return { cwd: resolveRunnerWorkspace(input) };
+  } catch (error) {
+    return {
+      cwd: getUnresolvedCwd(input),
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function getUnresolvedCwd(input: RunnerInput): string {
+  const effectiveWorkspace = input.effectiveWorkspace?.trim();
+  if (effectiveWorkspace) {
+    return effectiveWorkspace;
+  }
+
+  if (input.useWorktree === true) {
+    return input.worktreePath?.trim() || '(unresolved worktree)';
+  }
+
+  return input.workspace?.trim() || '(unresolved workspace)';
+}
+
+/**
+ * 格式化 Worktree 检查信息用于日志输出
+ */
+export function formatWorktreeCheck(input: RunnerInput, actualCwd: string): string {
+  const lines = [
+    '=== Worktree Check ===',
+    `workspace: ${input.workspace}`,
+    `effectiveWorkspace: ${input.effectiveWorkspace ?? '(not set)'}`,
+    `useWorktree: ${input.useWorktree ?? false}`,
+    `worktreePath: ${input.worktreePath ?? '(not set)'}`,
+    `worktreeBranch: ${input.worktreeBranch ?? '(not set)'}`,
+    `pwd: ${actualCwd}`,
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * 根据 Worker 类型获取对应的 Runner
+ */
+export function getRunnerForType(type: string): Runner {
+  // 根据 RUNNER_MODE 返回对应的 Runner
+  // 实现省略，根据你的项目需求自定义
+  switch (type) {
+    case 'codex':
+      return new CodexRunner();
+    case 'claude-code':
+      return new ClaudeCodeRunner();
+    case 'hermes':
+      return new HermesRunner();
+    default:
+      return new MockRunner();
+  }
+}
+
+export async function runTask(input: RunnerInput): Promise<RunnerResult> {
+  const runner = getRunnerForType(input.workerType);
+  return runner.run(input);
+}

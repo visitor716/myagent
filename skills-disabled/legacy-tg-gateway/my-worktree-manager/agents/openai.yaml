@@ -1,0 +1,7 @@
+interface:
+  display_name: "Worktree Manager"
+  short_description: "统一管理 worktree 审查、合并、隔离与验收"
+  default_prompt: "Use $my-worktree-manager to review, merge, isolate, or validate tg-agent-gateway worker worktrees."
+
+policy:
+  allow_implicit_invocation: true
