@@ -141,6 +141,83 @@ tr '\0' '\n' < "/proc/$pid/environ" | rg -i '^(HTTP_PROXY|HTTPS_PROXY|http_proxy
 
 If reconnecting continues after the proxy env is correct, inspect Codex Desktop/app-server socket and daemon logs next; do not keep changing Clash blindly.
 
+### Codex proxy port drift
+
+Common silent failure: Clash/Mihomo restarted or refreshed its profile, the live HTTP or
+mixed port changed, and `~/.codex/.env` still points Codex Desktop/app-server at the old
+dead port. A shell-level `curl` can still work if the shell inherited a different proxy,
+so compare the live proxy endpoint with the environment that Codex actually inherited.
+
+Symptoms:
+- `codex exec "..."` shows `Reconnecting... 1/12` with no real progress.
+- `codex doctor` reports reachability failure for the ChatGPT base URL.
+- `codex auth login` fails with `error sending request for url` during token exchange.
+- Shell `curl https://api.openai.com` works because the shell is not using the stale port.
+
+Triage:
+
+```bash
+# 1. Find the live HTTP-capable Clash/Mihomo endpoint.
+bash /home/zhanxp/projects/myagent/skills/skills-local/clash-proxy/scripts/diagnose_proxy.sh
+
+for port in 4065 4062 7890 9090; do
+  curl -fsS --max-time 4 -x "http://127.0.0.1:${port}" https://httpbin.org/ip >/dev/null \
+    && printf 'alive: http://127.0.0.1:%s\n' "$port"
+done
+
+# 2. Compare with Codex's persisted app-server environment.
+if [ -f ~/.codex/.env ]; then
+  grep -E '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy)=' ~/.codex/.env
+fi
+
+# 3. If a running app-server exists, compare the real process environment too.
+pid="$(pgrep -f 'codex app-server --remote-control' | head -n1 || true)"
+if [ -n "$pid" ]; then
+  tr '\0' '\n' < "/proc/$pid/environ" | rg -i '^(HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy|NO_PROXY|no_proxy)='
+fi
+```
+
+Fix when port drifted:
+
+```bash
+# Backup first, preserving unrelated keys in ~/.codex/.env.
+cp ~/.codex/.env ~/.codex/.env.bak.$(date +%Y%m%d-%H%M%S)
+
+# Replace only loopback HTTP proxy ports. Fill in <live-port> from the triage result.
+sed -i -E 's#http://127\.0\.0\.1:[0-9]+#http://127.0.0.1:<live-port>#g' ~/.codex/.env
+
+# Validate parsing before restarting anything.
+set -a; . ~/.codex/.env; set +a
+printf '%s\n' "$HTTP_PROXY" "$HTTPS_PROXY"
+```
+
+Do not change Clash to match Codex's stale port. Update Codex to the live Clash/Mihomo
+HTTP or mixed port. Restart the app-server only after deciding it will not interrupt the
+current active Codex session; otherwise report the exact restart command for the user.
+
+### Codex auth vs proxy: which is broken?
+
+When Codex is unusable, proxy and auth failures can look identical from symptoms alone.
+Diagnose in strict order:
+
+```text
+1. Proxy first: curl -x http://127.0.0.1:<port> https://httpbin.org/ip
+2. Auth second: ls ~/.codex/auth.json && codex doctor | grep 'auth '
+3. Provider last: codex doctor | grep reachability
+```
+
+For `chatgpt-http`, `OPENAI_API_KEY` is not the credential path. Codex uses OAuth for this
+provider. The token lives in `~/.codex/auth.json`, created by `codex auth login`.
+`codex doctor` reports `auth mode: chatgpt` for this configuration. If `auth.json` is
+missing or expired, fix login instead of setting an API key.
+
+WSL callback gotcha for `codex auth login`: the command starts a local callback server on
+`localhost:1455`. A Windows browser cannot always reach WSL's localhost, so after OAuth
+login the redirect to `localhost:1455/auth/callback?code=...` can fail with connection
+refused. Replace `localhost` in the browser address bar with the WSL IP from
+`ip addr show eth0 | grep 'inet '`, then load the adjusted callback URL so WSL receives
+the code and creates `~/.codex/auth.json`.
+
 ### tg-agent-gateway and worktree worker inheritance
 
 For `tg-agent-gateway`, gateway-launched Codex/Claude/Hermes workers inherit the gateway process env. To make future worker runs use the proxy by default:
