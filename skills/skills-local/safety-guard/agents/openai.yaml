@@ -1,0 +1,6 @@
+interface:
+  display_name: "Safety Guard"
+  short_description: "Guard destructive or production operations"
+  default_prompt: "Use $safety-guard to keep this operation scoped and reversible."
+policy:
+  allow_implicit_invocation: true

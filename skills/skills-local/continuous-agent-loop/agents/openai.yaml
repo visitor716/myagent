@@ -1,0 +1,6 @@
+interface:
+  display_name: "Continuous Agent Loop"
+  short_description: "Design bounded autonomous agent loops"
+  default_prompt: "Use $continuous-agent-loop to design a bounded verified loop for this task."
+policy:
+  allow_implicit_invocation: true

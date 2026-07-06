@@ -1,0 +1,6 @@
+interface:
+  display_name: "Search First"
+  short_description: "Research existing tools before coding"
+  default_prompt: "Use $search-first before building a custom solution for this feature."
+policy:
+  allow_implicit_invocation: true

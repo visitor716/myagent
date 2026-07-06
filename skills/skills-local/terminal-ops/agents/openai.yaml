@@ -1,0 +1,6 @@
+interface:
+  display_name: "Terminal Ops"
+  short_description: "Evidence-first command and repo operation"
+  default_prompt: "Use $terminal-ops to inspect, run, and report exact verification evidence."
+policy:
+  allow_implicit_invocation: true

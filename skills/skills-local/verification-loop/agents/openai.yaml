@@ -1,0 +1,6 @@
+interface:
+  display_name: "Verification Loop"
+  short_description: "Prove build, tests, lint, and typecheck"
+  default_prompt: "Use $verification-loop to verify this repo change before handoff."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,6 @@
+interface:
+  display_name: "ECC Security Review"
+  short_description: "Review secrets, auth, input, and APIs"
+  default_prompt: "Use $ecc-security-review to audit this change for security risks."
+policy:
+  allow_implicit_invocation: true

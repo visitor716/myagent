@@ -1,0 +1,6 @@
+interface:
+  display_name: "Architecture Decisions"
+  short_description: "Capture durable ADR decision records"
+  default_prompt: "Use $architecture-decision-records to record this architecture decision."
+policy:
+  allow_implicit_invocation: true
