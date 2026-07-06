@@ -44,4 +44,6 @@ bash configs/sync.sh backup      # 运行时 → 模板（备份后需脱敏）
 
 浏览器自动化使用 `wsl-windows-chrome` 技能的专用 Windows Chrome/Edge 配置文件。
 
+从 WSL 调用 Windows PowerShell/PowerShell 7 时，优先使用 `powershell-skill`；该技能通过 EncodedCommand helper 传入脚本，默认选择最新版 `pwsh.exe`，避免 Bash 与 PowerShell 双重引号解析。简单一行命令才直接使用 `powershell.exe -Command '...'`。
+
 长期记忆保存在 `docs/agent-memory/` 下。

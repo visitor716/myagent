@@ -1,0 +1,4 @@
+interface:
+  display_name: "PowerShell Skill"
+  short_description: "Run Windows PowerShell safely from WSL"
+  default_prompt: "Use $powershell-skill to run this Windows PowerShell task safely from WSL."
