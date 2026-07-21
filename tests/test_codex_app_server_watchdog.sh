@@ -26,13 +26,35 @@ MANAGED_CODEX_APP="$HOME/.codex/packages/standalone/current/codex"
 . "$WATCHDOG_LIB"
 
 matching_versions='{"status":"running","cliVersion":"0.144.6","managedCodexVersion":"0.144.6","appServerVersion":"0.144.6"}'
+mismatched_versions='{"status":"running","cliVersion":"0.144.6","managedCodexVersion":"0.144.6","appServerVersion":"0.144.5"}'
 stopped_daemon='{"status":"stopped","cliVersion":"0.144.6","managedCodexVersion":"0.144.6","appServerVersion":"0.144.6"}'
 
 printf '%s' "$matching_versions" | version_json_is_healthy
+printf '%s' "$mismatched_versions" | version_json_is_healthy
 if printf '%s' "$stopped_daemon" | version_json_is_healthy; then
     echo "stopped daemon must remain unhealthy" >&2
     exit 1
 fi
+
+remote_control_process_is_healthy() { return 0; }
+socket_is_listening() { return 0; }
+pid_update_loop_is_healthy() { return 1; }
+process_topology_is_healthy
+
+socket_is_listening() { return 1; }
+if process_topology_is_healthy; then
+    echo "remote control without a listening socket must remain unhealthy" >&2
+    exit 1
+fi
+
+socket_is_listening() { return 0; }
+if destructive_cleanup_is_safe; then
+    echo "a listening socket must protect the active app-server" >&2
+    exit 1
+fi
+
+socket_is_listening() { return 1; }
+destructive_cleanup_is_safe
 
 CODEX_WATCHDOG_FAILURE_THRESHOLD=3
 DAEMON_PROBE_FAILURE_COUNT=0
@@ -60,6 +82,7 @@ grep -Fxq 'Environment=CODEX_WATCHDOG_WORKDIR=%h' "$UNIT"
 grep -Fxq 'Environment=CODEX_WATCHDOG_FAILURE_THRESHOLD=3' "$UNIT"
 grep -Fxq 'Environment=CODEX_BIN=%h/.local/bin/codex-bin' "$UNIT"
 grep -Fxq 'ExecStart=%h/.local/libexec/codex-app-server-watchdog/codex_app_server_watchdog.sh --loop' "$UNIT"
+grep -Eq 'sleep "\$INTERVAL_SECONDS".*9>&-' "$WATCHDOG"
 
 if grep -R -Fq '/home/zhanxp/projects/oa-fill-assistant' \
     "$WATCHDOG_DIR" "$UNIT" "$SYNC"; then
