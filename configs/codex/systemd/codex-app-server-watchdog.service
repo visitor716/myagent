@@ -1,0 +1,22 @@
+[Unit]
+Description=Codex app-server watchdog
+After=default.target
+
+[Service]
+Type=simple
+KillMode=process
+UMask=0077
+WorkingDirectory=%h
+Environment=CODEX_WATCHDOG_WORKDIR=%h
+Environment=CODEX_WATCHDOG_INTERVAL=60
+Environment=CODEX_WATCHDOG_REMOTE_INTERVAL=60
+Environment=CODEX_WATCHDOG_RESTART_COOLDOWN=30
+Environment=CODEX_WATCHDOG_FAILURE_THRESHOLD=3
+Environment=CODEX_WATCHDOG_LOG=%h/.codex/log/codex-app-server-watchdog.log
+Environment=CODEX_BIN=%h/.local/bin/codex-bin
+ExecStart=%h/.local/libexec/codex-app-server-watchdog/codex_app_server_watchdog.sh --loop
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -6,12 +6,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WATCHDOG_DIR="$ROOT_DIR/scripts/apps/codex/app-server-watchdog"
 WATCHDOG="$WATCHDOG_DIR/codex_app_server_watchdog.sh"
 WATCHDOG_LIB="$WATCHDOG_DIR/codex_app_server_watchdog_lib.sh"
+INSTALLER="$WATCHDOG_DIR/install.sh"
 UNIT="$ROOT_DIR/configs/codex/systemd/codex-app-server-watchdog.service"
 SYNC="$ROOT_DIR/configs/sync.sh"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-for required_file in "$WATCHDOG" "$WATCHDOG_LIB" "$UNIT" "$SYNC"; do
+for required_file in "$WATCHDOG" "$WATCHDOG_LIB" "$INSTALLER" "$UNIT" "$SYNC"; do
     if [[ ! -f "$required_file" ]]; then
         echo "missing machine-level watchdog asset: $required_file" >&2
         exit 1
@@ -24,6 +25,18 @@ MANAGED_CODEX_APP="$HOME/.codex/packages/standalone/current/codex"
 
 # shellcheck source=../scripts/apps/codex/app-server-watchdog/codex_app_server_watchdog_lib.sh
 . "$WATCHDOG_LIB"
+
+FAKE_CODEX="$TMP_DIR/codex-bin"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$FAKE_CODEX"
+chmod 700 "$FAKE_CODEX"
+CODEX_BIN="$FAKE_CODEX"
+[[ "$(resolve_codex_bin)" == "$FAKE_CODEX" ]]
+unset CODEX_BIN
+
+if grep -Fq 'codex-proxy-wrapper' "$WATCHDOG_LIB"; then
+    echo "watchdog health checks must never fall back to the proxy wrapper" >&2
+    exit 1
+fi
 
 matching_versions='{"status":"running","cliVersion":"0.144.6","managedCodexVersion":"0.144.6","appServerVersion":"0.144.6"}'
 mismatched_versions='{"status":"running","cliVersion":"0.144.6","managedCodexVersion":"0.144.6","appServerVersion":"0.144.5"}'
@@ -77,6 +90,7 @@ if defer_daemon_restart_after_probe_failure; then
 fi
 
 grep -Fxq 'KillMode=process' "$UNIT"
+grep -Fxq 'UMask=0077' "$UNIT"
 grep -Fxq 'WorkingDirectory=%h' "$UNIT"
 grep -Fxq 'Environment=CODEX_WATCHDOG_WORKDIR=%h' "$UNIT"
 grep -Fxq 'Environment=CODEX_WATCHDOG_FAILURE_THRESHOLD=3' "$UNIT"
@@ -91,7 +105,17 @@ if grep -R -Fq '/home/zhanxp/projects/oa-fill-assistant' \
 fi
 
 STAGED_HOME="$TMP_DIR/home"
-HOME="$STAGED_HOME" CODEX_WATCHDOG_INSTALL_ONLY=1 \
+FAKE_BIN="$TMP_DIR/bin"
+SYSTEMCTL_LOG="$TMP_DIR/systemctl.log"
+mkdir -p "$FAKE_BIN"
+printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'printf "%s\n" "$*" >> "${SYSTEMCTL_LOG:?}"' \
+    > "$FAKE_BIN/systemctl"
+chmod 700 "$FAKE_BIN/systemctl"
+
+HOME="$STAGED_HOME" PATH="$FAKE_BIN:$PATH" SYSTEMCTL_LOG="$SYSTEMCTL_LOG" \
+    CODEX_WATCHDOG_INSTALL_ONLY=1 \
     bash "$SYNC" codex-watchdog-install >/dev/null
 
 RUNTIME_DIR="$STAGED_HOME/.local/libexec/codex-app-server-watchdog"
@@ -100,8 +124,9 @@ cmp -s "$WATCHDOG" "$RUNTIME_DIR/codex_app_server_watchdog.sh"
 cmp -s "$WATCHDOG_LIB" "$RUNTIME_DIR/codex_app_server_watchdog_lib.sh"
 cmp -s "$UNIT" "$RUNTIME_UNIT"
 [[ -x "$RUNTIME_DIR/codex_app_server_watchdog.sh" ]]
-[[ -x "$RUNTIME_DIR/codex_app_server_watchdog_lib.sh" ]]
-grep -Fq 'systemctl --user reenable codex-app-server-watchdog.service' "$SYNC"
+[[ ! -x "$RUNTIME_DIR/codex_app_server_watchdog_lib.sh" ]]
+[[ ! -s "$SYSTEMCTL_LOG" ]]
+grep -Fq 'systemctl --user reenable codex-app-server-watchdog.service' "$INSTALLER"
 bash "$SYNC" help | grep -Fq 'codex-watchdog-install'
 
 echo "test_codex_app_server_watchdog: PASS"

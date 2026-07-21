@@ -394,6 +394,10 @@ install_codex_heartbeat_timer() {
     fi
 }
 
+cmd_codex_watchdog_install() {
+    "$PROJECT_DIR/scripts/apps/codex/app-server-watchdog/install.sh"
+}
+
 cmd_codex_backup_runtime() {
     log_info "开始备份 Codex 可复用配置到: $CODEX_RUNTIME_BACKUP_DIR"
 
@@ -645,6 +649,7 @@ show_help() {
     echo "  codex-backup-all      codex-backup-runtime 的兼容别名"
     echo "  codex-full-auto  安装 Codex 全自动默认入口到模板和运行时"
     echo "  codex-autonomy   安装 Codex 全自动入口、长期记忆和 heartbeat timer"
+    echo "  codex-watchdog-install  安装机器级 Codex app-server watchdog"
     echo "  validate         验证配置格式"
     echo "  help             显示此帮助信息"
     echo ""
@@ -654,6 +659,7 @@ show_help() {
     echo "  $0 codex-backup-runtime"
     echo "  $0 codex-full-auto"
     echo "  $0 codex-autonomy"
+    echo "  $0 codex-watchdog-install"
     echo "  $0 validate"
 }
 
@@ -676,6 +682,9 @@ case "${1:-help}" in
         ;;
     codex-autonomy)
         cmd_codex_autonomy
+        ;;
+    codex-watchdog-install)
+        cmd_codex_watchdog_install
         ;;
     validate)
         cmd_validate
