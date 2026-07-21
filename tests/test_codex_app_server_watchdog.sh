@@ -6,12 +6,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WATCHDOG_DIR="$ROOT_DIR/scripts/apps/codex/app-server-watchdog"
 WATCHDOG="$WATCHDOG_DIR/codex_app_server_watchdog.sh"
 WATCHDOG_LIB="$WATCHDOG_DIR/codex_app_server_watchdog_lib.sh"
-INSTALLER="$WATCHDOG_DIR/install.sh"
 UNIT="$ROOT_DIR/configs/codex/systemd/codex-app-server-watchdog.service"
+SYNC="$ROOT_DIR/configs/sync.sh"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-for required_file in "$WATCHDOG" "$WATCHDOG_LIB" "$INSTALLER" "$UNIT"; do
+for required_file in "$WATCHDOG" "$WATCHDOG_LIB" "$UNIT" "$SYNC"; do
     if [[ ! -f "$required_file" ]]; then
         echo "missing machine-level watchdog asset: $required_file" >&2
         exit 1
@@ -62,13 +62,14 @@ grep -Fxq 'Environment=CODEX_BIN=%h/.local/bin/codex-bin' "$UNIT"
 grep -Fxq 'ExecStart=%h/.local/libexec/codex-app-server-watchdog/codex_app_server_watchdog.sh --loop' "$UNIT"
 
 if grep -R -Fq '/home/zhanxp/projects/oa-fill-assistant' \
-    "$WATCHDOG_DIR" "$UNIT"; then
+    "$WATCHDOG_DIR" "$UNIT" "$SYNC"; then
     echo "machine-level watchdog assets must not reference oa-fill-assistant" >&2
     exit 1
 fi
 
 STAGED_HOME="$TMP_DIR/home"
-HOME="$STAGED_HOME" CODEX_WATCHDOG_INSTALL_ONLY=1 bash "$INSTALLER" >/dev/null
+HOME="$STAGED_HOME" CODEX_WATCHDOG_INSTALL_ONLY=1 \
+    bash "$SYNC" codex-watchdog-install >/dev/null
 
 RUNTIME_DIR="$STAGED_HOME/.local/libexec/codex-app-server-watchdog"
 RUNTIME_UNIT="$STAGED_HOME/.config/systemd/user/codex-app-server-watchdog.service"
@@ -77,5 +78,7 @@ cmp -s "$WATCHDOG_LIB" "$RUNTIME_DIR/codex_app_server_watchdog_lib.sh"
 cmp -s "$UNIT" "$RUNTIME_UNIT"
 [[ -x "$RUNTIME_DIR/codex_app_server_watchdog.sh" ]]
 [[ -x "$RUNTIME_DIR/codex_app_server_watchdog_lib.sh" ]]
+grep -Fq 'systemctl --user reenable codex-app-server-watchdog.service' "$SYNC"
+bash "$SYNC" help | grep -Fq 'codex-watchdog-install'
 
 echo "test_codex_app_server_watchdog: PASS"
