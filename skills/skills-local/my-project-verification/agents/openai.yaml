@@ -1,0 +1,7 @@
+interface:
+  display_name: "my-Project Verification"
+  short_description: "Run repo-appropriate verification checks"
+  default_prompt: "Use $my-project-verification to select and run the right type-check, build, test, Vitest, or WebApp verification commands for the current repository."
+
+policy:
+  allow_implicit_invocation: true

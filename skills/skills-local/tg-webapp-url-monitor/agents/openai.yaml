@@ -1,0 +1,6 @@
+interface:
+  display_name: "my-TG WebApp URL Monitor"
+  short_description: "Monitor and rotate tg-agent-gateway WebApp URLs."
+  default_prompt: "Use $my-tg-webapp-url-monitor to inspect TG_WEBAPP_URL health, start or stop the monitor, rotate an expired trycloudflare WebApp URL, and publish a fresh Telegram App entry."
+policy:
+  allow_implicit_invocation: true
