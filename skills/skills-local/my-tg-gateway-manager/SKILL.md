@@ -1,6 +1,6 @@
 ---
 name: my-tg-gateway-manager
-description: Single entry point for tg-agent-gateway release, runtime recovery, WebApp URL/tunnel monitoring, worktree review/merge/runner-isolation acceptance, and Telegram bot input-flow implementation. Use when the user mentions tg-agent-gateway, TG gateway, /app, /webapp, latest app, Telegram menu recovery, WebApp blank/loading, TG_WEBAPP_URL, trycloudflare tunnel drift, worker worktree review/merge/acceptance, runner cwd/effectiveWorkspace/worktreePath, or Telegram multi-step input/task completion flows.
+description: Single entry point for tg-agent-gateway release, runtime recovery, WebApp URL/tunnel monitoring, worktree review/merge/runner-isolation acceptance, and Telegram bot input-flow implementation. Use when the user mentions tg-agent-gateway, TG gateway, /app, /webapp, latest app, Telegram menu recovery, WebApp blank/loading, TG_WEBAPP_URL, expired trycloudflare link, WebApp URL monitor start/stop/status, auto-rotation after sustained failure, WiFi works but cellular/5G fails, worker worktree review/merge/acceptance, runner cwd/effectiveWorkspace/worktreePath, or Telegram multi-step input/task completion flows.
 ---
 
 # My TG Gateway Manager
@@ -29,7 +29,7 @@ Choose one lane, then read the matching reference only when needed:
 | --- | --- | --- |
 | Send/fix `/app`, `/webapp`, `/latest_app`, release version, deploy time, update notes, fresh WebApp button | App release | `references/app-release.md` |
 | Telegram menu does nothing, mobile WebApp blank/loading, stale button, callback drift, polling/proxy/tunnel incident | Runtime recovery | `references/runtime-recovery.md` |
-| `TG_WEBAPP_URL`, quick tunnel, public URL health, auto-rotation, monitor status | URL monitor | `references/runtime-recovery.md` |
+| `TG_WEBAPP_URL`, quick tunnel, public URL health, auto-rotation, monitor start/stop/status | URL monitor | `references/webapp-url-monitor.md` |
 | Review worker/candidate branches, decide whether work can enter `master` | Worktree review | `references/review-gate.md` |
 | Merge accepted worker work into `master`, restart, `/app`, push/sync/cleanup | Worktree merge | `references/merge-master.md` |
 | Implement/repair runner cwd isolation, `useWorktree`, `effectiveWorkspace`, `worktreePath` | Runner isolation | `references/runner-isolation.md` |

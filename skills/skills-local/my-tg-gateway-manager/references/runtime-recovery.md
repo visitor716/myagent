@@ -49,6 +49,8 @@ If manual `getMe` works with proxy but Gateway has no proxy env, fix `scripts/re
 
 ### Mobile WebApp URL And Tunnel Target
 
+For monitor lifecycle (`npm run webapp:url-monitor:*`), threshold state, and forced rotation, use `webapp-url-monitor.md`. This section covers symptom triage only.
+
 - `TG_WEBAPP_URL` is the button target for new `/start` messages; old Telegram messages keep their old inline-button URL.
 - Telegram clients can keep an already-open WebApp popup/iframe. After quick-tunnel rotation, stale iframe URLs can still point at the old `*.trycloudflare.com` URL and show `530 The origin has been unregistered from Argo Tunnel`.
 - Desktop Chrome can prove the tunnel serves HTML, but it is not enough. Outside Telegram it may show `Not running in Telegram WebApp`, and it does not prove what URL the Telegram popup is loading.
