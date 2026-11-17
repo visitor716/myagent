@@ -1,0 +1,9 @@
+[Unit]
+Description=WSL localhost access to dedicated Windows Chrome CDP
+
+[Socket]
+ListenStream=127.0.0.1:9222
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

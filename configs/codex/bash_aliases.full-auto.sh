@@ -11,7 +11,16 @@ _codex_has_permission_flag() {
   return 1
 }
 
+_codex_guard_disabled_mcp() {
+  bash /home/zhanxp/projects/myagent/configs/sync.sh codex-mcp-guard >/dev/null 2>&1 || {
+    echo "codex: 启动 MCP 防复发检查失败，请运行 configs/sync.sh codex-mcp-guard" >&2
+    return 1
+  }
+}
+
 codex() {
+  _codex_guard_disabled_mcp || return 1
+
   if _codex_has_permission_flag "$@"; then
     command codex "$@"
     return
@@ -46,6 +55,7 @@ alias cfa='command codex --full-auto'
 alias omxmad='omx --madmax'
 
 cfast() {
+  _codex_guard_disabled_mcp || return 1
   command codex --dangerously-bypass-approvals-and-sandbox \
     -m gpt-5.4-mini \
     -c 'model_reasoning_effort="high"' \
@@ -53,6 +63,7 @@ cfast() {
 }
 
 cdeep() {
+  _codex_guard_disabled_mcp || return 1
   command codex --dangerously-bypass-approvals-and-sandbox \
     -m gpt-5.5 \
     -c 'model_reasoning_effort="xhigh"' \
@@ -72,6 +83,7 @@ cchrome_attach() {
 }
 
 cremote() {
+  _codex_guard_disabled_mcp || return 1
   command codex remote-control --enable remote_control --enable prevent_idle_sleep "$@"
 }
 # <<< codex full-auto defaults <<<

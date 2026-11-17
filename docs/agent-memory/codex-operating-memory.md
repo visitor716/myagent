@@ -83,6 +83,21 @@ Last reviewed: 2026-05-25
 - Heartbeat checks should remain non-invasive: collect status, do not mutate
   project code, do not launch fresh browsers, and do not enable MCP.
 
+## Network And Power Diagnostics
+
+- Since 2026-07-23, the live Windows network/power evidence root is
+  `/home/zhanxp/projects/myagent/logs/network-power-monitor/`; use this project
+  path instead of the retired desktop path.
+- Start incident review with `latest.txt`, `heartbeat.csv`, `events.log`,
+  `state.json`, and `snapshots/*.txt` before changing network or power settings.
+- The Windows startup launcher writes to this directory through
+  `\\wsl.localhost\Ubuntu\home\zhanxp\projects\myagent\logs\network-power-monitor`.
+  The installed collector remains under
+  `C:\Users\zhanxp\AppData\Local\MyAgent\NetworkPowerMonitor\`.
+- `logs/` is intentionally ignored by Git because these files are live,
+  machine-local evidence. Do not recreate
+  `C:\Users\zhanxp\Desktop\network-power-monitor` as the log root.
+
 ## Model And Effort
 
 - Default Codex config may use strong reasoning for autonomous work.

@@ -17,11 +17,18 @@ VERIFY_CMD="npm run verify"
 KEEP_INTEGRATION=false
 INTEGRATION_BRANCH=""
 RELEASE_NOTIFY=true
+CANDIDATE_FILE=""
 ACTIVITY_SETTLE_SECONDS="${TG_WORKTREE_ACTIVITY_SETTLE_SECONDS:-3}"
 
 READY_WORKERS=()
 READY_BRANCHES=()
+READY_PATHS=()
+READY_EXPECTED_HEADS=()
 SKIPPED_LINES=()
+CANDIDATE_WORKERS=()
+CANDIDATE_BRANCHES=()
+CANDIDATE_WORKSPACES=()
+CANDIDATE_HEADS=()
 
 usage() {
   cat <<'EOF'
@@ -36,7 +43,8 @@ Options:
   --repo <path>             Main repo path (default: /home/zhanxp/projects/tg-agent-gateway)
   --base <ref>              Base branch/ref (default: master)
   --workers "<list>"        Space-separated workers (default: cc2 cc3 cc4 cc5 cc6 cc7 cc8 cc9 cc10)
-  --include-active          Do not skip worktrees with busy or unknown local activity
+  --candidate-file <path>   Scan only workers approved by a cx2 PASS integration-candidate manifest
+  --include-active          Do not skip active worktrees in non-candidate mode
   --activity-settle-seconds <n>
                             Seconds to sample tmux output before treating a pane as idle (default: 3)
   --verify <command>        Verification command for apply mode (default: npm run verify)
@@ -49,6 +57,8 @@ Options:
 
 Safety:
   - Dirty, busy, unchanged, behind, diverged, missing, or invalid worktrees are skipped.
+  - Candidate mode requires exact manifest worker, workspace, branch, and 40-character HEAD matches,
+    and never permits dirty, busy, behind, or diverged candidates.
   - Clean worktrees with only quiet tmux panes are allowed; they are occupied,
     not busy.
   - Apply mode leaves master unchanged if merge or verification fails.
@@ -81,6 +91,11 @@ while [[ $# -gt 0 ]]; do
     --workers)
       [[ $# -ge 2 ]] || { echo "Missing value for --workers" >&2; exit 2; }
       WORKERS="$2"
+      shift 2
+      ;;
+    --candidate-file)
+      [[ $# -ge 2 ]] || { echo "Missing value for --candidate-file" >&2; exit 2; }
+      CANDIDATE_FILE="$2"
       shift 2
       ;;
     --include-active)
@@ -160,11 +175,96 @@ require_repo() {
   git -C "$REPO" rev-parse --verify --quiet "$BASE_REF" >/dev/null || die "Base ref not found: $BASE_REF"
 }
 
+parse_candidate_manifest() {
+  python3 - "$CANDIDATE_FILE" "$BASE_REF" <<'PY'
+import json
+import os
+import re
+import sys
+
+candidate_path, expected_base = sys.argv[1:]
+
+try:
+    with open(candidate_path, encoding="utf-8") as handle:
+        manifest = json.load(handle)
+except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"Invalid candidate file: {error}")
+
+if not isinstance(manifest, dict):
+    raise SystemExit("Invalid candidate file: root must be an object")
+if type(manifest.get("schemaVersion")) is not int or manifest.get("schemaVersion") != 1:
+    raise SystemExit("Invalid candidate file: schemaVersion must be 1")
+if manifest.get("kind") != "tg-agent-gateway.integration-candidate":
+    raise SystemExit("Invalid candidate file: kind must be tg-agent-gateway.integration-candidate")
+review = manifest.get("review")
+if not isinstance(review, dict) or review.get("status") != "PASS":
+    raise SystemExit("Invalid candidate file: review.status must be PASS")
+if manifest.get("baseRef") != expected_base:
+    raise SystemExit(
+        f"Invalid candidate file: baseRef {manifest.get('baseRef')!r} does not match --base {expected_base!r}"
+    )
+
+candidates = manifest.get("candidates")
+if not isinstance(candidates, list) or not candidates:
+    raise SystemExit("Invalid candidate file: candidates must be a non-empty array")
+
+workers = set()
+for index, candidate in enumerate(candidates):
+    if not isinstance(candidate, dict):
+        raise SystemExit(f"Invalid candidate file: candidates[{index}] must be an object")
+
+    worker = candidate.get("worker")
+    branch = candidate.get("branch")
+    workspace = candidate.get("workspace")
+    head = candidate.get("head")
+    prefix = f"Invalid candidate file: candidates[{index}]"
+
+    if not isinstance(worker, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", worker):
+        raise SystemExit(f"{prefix}.worker is invalid")
+    worker_key = worker.casefold()
+    if worker_key in workers:
+        raise SystemExit(f"Invalid candidate file: duplicate worker {worker}")
+    workers.add(worker_key)
+    if not isinstance(branch, str) or not branch or any(ord(char) < 32 for char in branch):
+        raise SystemExit(f"{prefix}.branch is invalid")
+    if not isinstance(workspace, str) or not os.path.isabs(workspace) or any(ord(char) < 32 for char in workspace):
+        raise SystemExit(f"{prefix}.workspace must be an absolute path without control characters")
+    if not isinstance(head, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", head):
+        raise SystemExit(f"{prefix}.head must be a 40-character hexadecimal SHA")
+
+    print("\t".join((worker, branch, os.path.realpath(workspace), head.lower())))
+PY
+}
+
+load_candidate_manifest() {
+  local rows worker branch workspace head
+
+  [[ -f "$CANDIDATE_FILE" ]] || die "Candidate file not found: $CANDIDATE_FILE"
+  if ! rows="$(parse_candidate_manifest)"; then
+    die "Candidate manifest validation failed: $CANDIDATE_FILE"
+  fi
+
+  while IFS=$'\t' read -r worker branch workspace head; do
+    [[ -n "$worker" ]] || continue
+    git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "Invalid candidate branch for $worker: $branch"
+    CANDIDATE_WORKERS+=("$worker")
+    CANDIDATE_BRANCHES+=("$branch")
+    CANDIDATE_WORKSPACES+=("$workspace")
+    CANDIDATE_HEADS+=("$head")
+  done <<<"$rows"
+
+  [[ ${#CANDIDATE_WORKERS[@]} -gt 0 ]] || die "Candidate manifest has no usable candidates: $CANDIDATE_FILE"
+  CANDIDATE_FILE="$(cd "$(dirname "$CANDIDATE_FILE")" && pwd)/$(basename "$CANDIDATE_FILE")"
+}
+
 scan_worker() {
   local worker="$1"
-  local path branch status occupied panes busy idle counts behind ahead
+  local expected_path="${2:-}"
+  local expected_branch="${3:-}"
+  local expected_head="${4:-}"
+  local path path_common repo_common branch head status occupied panes busy idle counts behind ahead
 
-  path="$(worker_path "$worker")"
+  path="${expected_path:-$(worker_path "$worker")}"
   if [[ ! -d "$path" ]]; then
     add_skip "$worker" "missing worktree ($path)"
     return
@@ -173,10 +273,28 @@ scan_worker() {
     add_skip "$worker" "path is not a git worktree ($path)"
     return
   fi
+  if [[ -n "$expected_path" ]]; then
+    path_common="$(git -C "$path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    repo_common="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if [[ -z "$path_common" || "$path_common" != "$repo_common" ]]; then
+      add_skip "$worker" "workspace does not belong to repo ($path)"
+      return
+    fi
+  fi
 
   branch="$(git -C "$path" branch --show-current 2>/dev/null || true)"
   if [[ -z "$branch" ]]; then
     add_skip "$worker" "detached HEAD"
+    return
+  fi
+  if [[ -n "$expected_branch" && "$branch" != "$expected_branch" ]]; then
+    add_skip "$worker" "branch mismatch (expected=$expected_branch actual=$branch path=$path)"
+    return
+  fi
+
+  head="$(git -C "$path" rev-parse HEAD 2>/dev/null || true)"
+  if [[ -n "$expected_head" && "${head,,}" != "${expected_head,,}" ]]; then
+    add_skip "$worker" "HEAD mismatch (expected=$expected_head actual=${head:-unknown} branch=$branch)"
     return
   fi
 
@@ -189,7 +307,7 @@ scan_worker() {
   fi
 
   read -r occupied panes busy idle <<<"$(worktree_activity_summary "$path" "$ACTIVITY_SETTLE_SECONDS")"
-  if [[ "$busy" != "0" && "$INCLUDE_ACTIVE" != "true" ]]; then
+  if [[ "$busy" != "0" && ( -n "$CANDIDATE_FILE" || "$INCLUDE_ACTIVE" != "true" ) ]]; then
     add_skip "$worker" "busy/unknown activity count $busy occupied=$occupied panes=$panes branch=$branch"
     return
   fi
@@ -215,6 +333,8 @@ scan_worker() {
 
   READY_WORKERS+=("$worker")
   READY_BRANCHES+=("$branch")
+  READY_PATHS+=("$path")
+  READY_EXPECTED_HEADS+=("$expected_head")
   echo "READY $worker: branch=$branch ahead=$ahead head=$(short_head "$path") occupied=$occupied busy=$busy idle_panes=$idle"
 }
 
@@ -223,6 +343,9 @@ print_summary() {
   echo "== Summary =="
   echo "repo: $REPO"
   echo "base: $BASE_REF"
+  if [[ -n "$CANDIDATE_FILE" ]]; then
+    echo "candidate file: $CANDIDATE_FILE"
+  fi
   echo "mode: $($APPLY && echo apply || echo dry-run)"
   echo "ready: ${#READY_WORKERS[@]}"
   echo "skipped: ${#SKIPPED_LINES[@]}"
@@ -232,6 +355,37 @@ print_summary() {
     echo "== Skipped =="
     printf '%s\n' "${SKIPPED_LINES[@]}"
   fi
+}
+
+assert_candidate_ready_for_merge() {
+  local worker="$1"
+  local path="$2"
+  local expected_branch="$3"
+  local expected_head="$4"
+  local path_common repo_common branch head status occupied panes busy idle counts behind ahead
+
+  [[ -d "$path" ]] || die "Candidate $worker workspace disappeared before merge: $path"
+  git -C "$path" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "Candidate $worker workspace is no longer a git worktree: $path"
+  path_common="$(git -C "$path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  repo_common="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  [[ -n "$path_common" && "$path_common" == "$repo_common" ]] || die "Candidate $worker workspace no longer belongs to repo: $path"
+
+  branch="$(git -C "$path" branch --show-current 2>/dev/null || true)"
+  [[ "$branch" == "$expected_branch" ]] || die "Candidate $worker branch changed before merge: expected=$expected_branch actual=${branch:-detached}"
+  head="$(git -C "$path" rev-parse HEAD 2>/dev/null || true)"
+  [[ "${head,,}" == "${expected_head,,}" ]] || die "Candidate $worker HEAD changed before merge: expected=$expected_head actual=${head:-unknown}"
+
+  status="$(git -C "$path" status --short)"
+  [[ -z "$status" ]] || die "Candidate $worker became dirty before merge"
+
+  read -r occupied panes busy idle <<<"$(worktree_activity_summary "$path" "$ACTIVITY_SETTLE_SECONDS")"
+  if [[ "$busy" != "0" ]]; then
+    die "Candidate $worker became busy before merge: busy=$busy occupied=$occupied panes=$panes"
+  fi
+
+  counts="$(git -C "$path" rev-list --left-right --count "$BASE_REF...HEAD" 2>/dev/null)" || die "Cannot compare candidate $worker against $BASE_REF before merge"
+  read -r behind ahead <<<"$counts"
+  [[ "$ahead" != "0" && "$behind" == "0" ]] || die "Candidate $worker is no longer ready before merge: behind=$behind ahead=$ahead"
 }
 
 assert_main_ready_for_apply() {
@@ -275,7 +429,11 @@ publish_app_release() {
 }
 
 apply_ready_merges() {
-  local timestamp integration_branch tmp_worktree old_head new_head i branch worker
+  local timestamp integration_branch tmp_worktree old_head new_head i branch worker path expected_head merge_target
+
+  if [[ -n "$CANDIDATE_FILE" && ${#READY_WORKERS[@]} -ne ${#CANDIDATE_WORKERS[@]} ]]; then
+    die "Candidate batch is not fully ready: ready=${#READY_WORKERS[@]} expected=${#CANDIDATE_WORKERS[@]}"
+  fi
 
   [[ ${#READY_WORKERS[@]} -gt 0 ]] || {
     echo "No ready worktrees to merge."
@@ -300,9 +458,16 @@ apply_ready_merges() {
   for i in "${!READY_WORKERS[@]}"; do
     worker="${READY_WORKERS[$i]}"
     branch="${READY_BRANCHES[$i]}"
+    path="${READY_PATHS[$i]}"
+    expected_head="${READY_EXPECTED_HEADS[$i]}"
+    merge_target="$branch"
+    if [[ -n "$CANDIDATE_FILE" ]]; then
+      assert_candidate_ready_for_merge "$worker" "$path" "$branch" "$expected_head"
+      merge_target="$expected_head"
+    fi
     echo
     echo "MERGE $worker: $branch -> $integration_branch"
-    if ! git -C "$tmp_worktree" merge --no-ff -m "Merge branch '$branch' from $worker" "$branch"; then
+    if ! git -C "$tmp_worktree" merge --no-ff -m "Merge branch '$branch' from $worker" "$merge_target"; then
       echo "Merge failed for $worker. Attempting merge --abort in integration worktree." >&2
       git -C "$tmp_worktree" merge --abort >/dev/null 2>&1 || true
       echo "Integration worktree kept for inspection: $tmp_worktree" >&2
@@ -344,14 +509,28 @@ main() {
   REPO="$(cd "$REPO" && pwd)"
   require_repo
 
+  if [[ -n "$CANDIDATE_FILE" ]]; then
+    load_candidate_manifest
+  fi
+
   if [[ "$FETCH" == "true" ]]; then
     git -C "$REPO" fetch origin --prune || echo "WARN: fetch failed; continuing with local refs" >&2
   fi
 
   echo "== Scan =="
-  for worker in $WORKERS; do
-    scan_worker "$worker"
-  done
+  if [[ -n "$CANDIDATE_FILE" ]]; then
+    for i in "${!CANDIDATE_WORKERS[@]}"; do
+      scan_worker \
+        "${CANDIDATE_WORKERS[$i]}" \
+        "${CANDIDATE_WORKSPACES[$i]}" \
+        "${CANDIDATE_BRANCHES[$i]}" \
+        "${CANDIDATE_HEADS[$i]}"
+    done
+  else
+    for worker in $WORKERS; do
+      scan_worker "$worker"
+    done
+  fi
 
   print_summary
 

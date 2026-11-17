@@ -3,6 +3,7 @@ model_reasoning_effort = "xhigh"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
 suppress_unstable_features_warning = true
+experimental_realtime_ws_base_url = "https://api.openai.com/v1"
 
 [features]
 apps = false
@@ -12,6 +13,7 @@ memories = true
 prevent_idle_sleep = true
 remote_control = true
 
+enable_mcp_apps = false
 [profiles.fast]
 model = "gpt-5.4-mini"
 model_reasoning_effort = "high"

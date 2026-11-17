@@ -28,11 +28,14 @@ codex features list | rg "^(apps|enable_mcp_apps)\b"
 ```bash
 rg -n "mcp_servers|mcp__|MCP_TIMEOUT|chrome-devtools|context7|codex_apps|open-websearch|features|enable_mcp_apps" \
   ~/.codex/config.toml \
+  /mnt/c/Users/"${WINDOWS_USER:-$USER}"/.codex/config.toml \
   ~/.claude/settings.json \
   /home/zhanxp/projects/myagent/configs/codex/config.toml \
   "/home/zhanxp/projects/myagent/configs/claude code/settings.json" \
   /home/zhanxp/projects/myagent/configs/claude-code/settings.json 2>/dev/null
 ```
+
+   - On WSL machines that also run the Windows Codex App, inspect the Windows-side config too. A disabled or stale Windows MCP block can be copied back into the WSL runtime by an update or configuration synchronization path.
 
 4. Remove only MCP startup configuration and MCP permission allowlist entries:
    - Codex TOML: remove enabled `[mcp_servers.*]` blocks, including an empty parent `[mcp_servers]` table if no server tables remain. Set disabled flags only if the existing config already uses that pattern.
@@ -70,6 +73,8 @@ codex features list | rg "^(apps|enable_mcp_apps)\b"
 ```
 
 Expected clean result is no configured MCP servers. If the command text changes, report the exact output instead of assuming.
+   - On this machine, run `bash /home/zhanxp/projects/myagent/configs/sync.sh codex-mcp-guard` after Codex updates or configuration switches. The installed Bash Codex entry points run this guard automatically before startup.
+   - For Codex App or app-server launches that bypass Bash entry points, install the user-level watcher with `bash /home/zhanxp/projects/myagent/configs/sync.sh codex-mcp-guard-install`, then verify `systemctl --user is-active codex-mcp-guard.path`.
 9. Optionally run `codex doctor` for a fuller post-check. It can exit nonzero for unrelated HTTP reachability or proxy failures; read and report the `Configuration` / `mcp` sections separately instead of treating those unrelated failures as MCP cleanup failures.
 
 ## Safety Rules

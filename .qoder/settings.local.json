@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat ~/.hermes/config.yaml 2>/dev/null; echo ---; hermes status 2>&1 | head -40)"
+    ]
+  }
+}

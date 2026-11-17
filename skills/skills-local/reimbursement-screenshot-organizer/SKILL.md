@@ -77,6 +77,25 @@ python3 ~/.codex/skills/reimbursement-screenshot-organizer/scripts/expense_organ
 python3 ~/.codex/skills/reimbursement-screenshot-organizer/scripts/expense_organizer.py apply /path/to/报销目录/expense-plan.json --execute
 ```
 
+## Session-detail references (absorbed from `my-reimbursement-screenshot-organizer`)
+
+Three focused references carry session-hardened detail. Load them only when the task
+touches that area — the workflow above still governs.
+
+- `references/oa-wfform-autofill.md` — 费用报销单审批（武汉）WfForm/CDP field-id map, template
+  conventions (lx codes, fixed `shhj`/`tzr` values, `fph=001+号码`, `lx=5` rows using
+  车站(宿舍) as origin/destination), relay+local-proxy execution chain, the
+  fill → read-back-verify → save → reload-verify flow (including the save-in-flight abort
+  and post-reload hydration pitfalls), and independent invoice-number verification against
+  source PDFs (`pdftotext` text layer; `pdftoppm`+`tesseract chi_sim` for image-only 12306
+  tickets — never digit-whitelist OCR). Read alongside `references/oa-browser-fill.md`.
+- `references/train-comparison-chart-rules.md` — Wuhan-HQ train-fare cap rule: which trips
+  need a 比价图 at all (origin/destination must be 武汉站/汉口站 to be exempt; passing through
+  mid-trip does not exempt), which Wuhan-equivalent direction to chart, and same-day
+  multi-segment trip grouping.
+- `references/lodging-print-package.md` — print-ready 2×2-grid Word document for 住宿费 payment
+  screenshots (python-docx template, labels, totals).
+
 ## Plan JSON
 
 Use this shape:

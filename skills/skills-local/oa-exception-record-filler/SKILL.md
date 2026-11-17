@@ -35,7 +35,7 @@ Use `--format json` for browser automation or exact field review.
 
 ## OA Values
 
-Default fixed fields:
+Historical example fields (not universal defaults; current customer configuration takes precedence):
 
 | Field | Value |
 | --- | --- |
@@ -46,7 +46,7 @@ Default fixed fields:
 | 光路 | `光路1` |
 | 复核人 | `罗威` |
 
-Device serial mapping by machine number:
+Historical customer-specific serial examples (never reuse across customer bases):
 
 | 机台数字 | 搜索编号 | Observed OA display |
 | --- | --- | --- |
@@ -66,7 +66,29 @@ Device serial mapping by machine number:
 
 When multiple machines appear in one日报, choose one mappable machine. The script defaults to stable-random selection so repeated runs choose the same machine for the same date/content. Use `--machine-choice first` for deterministic first-machine selection.
 
-Current serial list does not include machine `14`; if a日报 item uses `14A/14B`, stop that row and ask for the missing serial.
+If the active customer machine library has no reliable match, stop that row and ask for the missing serial; do not guess from these historical examples.
+
+## 实际操作前置与恢复
+
+- 先只读检查 aTrust VPN 登录状态，再访问 OA。可使用 OA 项目的 `atrust_vpn_keeper.ps1 -Action login-state`；只有确需登录且已有授权时才登录。安全桌面锁定时等待用户解锁；状态 Unknown 不等于未登录，不反复发送凭据。
+- OA 空白、持续加载或 HTTP 502 时，先分辨 VPN、登录与 OA 服务问题，做有限重试；无法恢复时停止并说明，不把模拟结果当成功。
+- 浏览器操作先用 `wsl-windows-chrome`，复用已登录的专用 Windows 浏览器和当前任务标签页，不切换 Profile、不清 Cookie、不关闭其他页面。
+- 企业微信登录失效时仅刷新登录页面或二维码。截取当前有效二维码，检查截图后发给用户；只截目标页面，避开其他桌面窗口。截图文件使用可下载的英文文件名；不得记录二维码、凭据或带鉴权参数的 URL 到 Git/长期记录。
+- 手机扫码后还需检查电脑端二维码页面：若出现企业微信登录的「确认」或「确认登录」按钮，核对确为当前登录流程后点击，等待跳转，并验证已进入企业微信/OA。不能仅因手机扫码成功就认定网页登录完成；未出现按钮时不盲点。此处仅允许登录确认，不代表授权点击 OA 表单提交或其他业务确认。
+- 扫码完成后重新核对当前标签页和表单身份，不直接重复新建。
+
+## 字段联动与可靠保存
+
+- 从当前运行配置确认客户基地、记录人和复核人，从该基地机台库核对设备编号；历史表格和浏览字段 raw ID 仅供定位，不能当作跨客户通用映射。
+- 新建前检查是否存在本次草稿；填写前核对 workflow、requestid、日期及明细原文，禁止修改其他日期或已归档记录。
+- 标题实际字段曾验证为 `field-1`；`requestname` 返回空不能证明标题为空。以当前页面 DOM 和 API 回读确认字段，不盲目重填。
+- 浏览字段按依赖顺序分批填写，待联动稳定后回读：设备/客户 → 项目/业务分类 → 异常类型 → 关键字。不要把一次 `changeFieldValue` 返回成功当作最终字段值。
+- 设备选择会自动改写现场编号。核对用户原文、机台库与 OA 联动结果；关联可靠且只是现场标签不符时，仅修正本条草稿现场编号后再回读；设备归属无法确认时停止，不猜编号、不改机台库。
+- 身份保护检查失败时先读取当前 requestid、日期、原文及字段，判断异步联动或导航；禁止盲目重跑整段填充、清空表单或重复保存。
+- 保存前逐项回读标题、日期、设备显示编号及 raw ID、现场编号、客户、分类、完整调试过程与耗时；未给耗时必须留空，不能为了校验通过编造。
+- 只点击规范化文本严格等于「保存」且唯一的按钮；遇弹窗先检查含义，绝不点击提交、审批或流转。
+- 保存后取得真实 requestid，重新加载或打开同一单据，回读日期、机台、客户、原文及空耗时，核对仍在创建节点且未流转。toast、可提交按钮或前端字段值本身不能证明持久化成功。
+- 最终简报实际保存结果、日期、机台、单据 ID、耗时状态与「未提交」；若未回读成功，明确说明未确认保存，避免重复创建。
 
 ## Browser Workflow
 

@@ -1,0 +1,36 @@
+{
+  "source_root": "/mnt/c/Users/zhanxp/Desktop",
+  "target_root": "/home/zhanxp/projects/myagent/scripts/legacy/windows-maintenance",
+  "created_at": "2026-07-14T19:20:00+08:00",
+  "policy": {
+    "delete": false,
+    "overwrite": false,
+    "preserve_names": true
+  },
+  "moves": [
+    {
+      "source": "_disable_fast_startup.ps1",
+      "target": "power/_disable_fast_startup.ps1",
+      "sha256": "5210723e8bbfb5ac5639a6cbaffe63c1f31ceef195a80e640f6c1625d9fb5a0",
+      "reason": "Historical Windows Fast Startup and hibernation maintenance script"
+    },
+    {
+      "source": "禁用快速启动-以管理员运行.ps1",
+      "target": "power/禁用快速启动-以管理员运行.ps1",
+      "sha256": "35170ec799f868e8eab4ea548d1d3d6827bc20f14527e4bd66a0adb1a3cf8d83",
+      "reason": "Interactive administrator variant of the Fast Startup maintenance script"
+    },
+    {
+      "source": "驱动健康检查.ps1",
+      "target": "diagnostics/驱动健康检查.ps1",
+      "sha256": "bfc48374a79209be5a0b1a8934e8a889f2bfa185ccd47953f18466b363302917",
+      "reason": "Historical HP OMEN driver diagnostic script with time-specific version assumptions"
+    },
+    {
+      "source": "双击我-管理员分析蓝屏dump.cmd",
+      "target": "dump-analysis/双击我-管理员分析蓝屏dump.cmd",
+      "sha256": "d921d67e3e0393f274c3bf7f50b35bd269b9ba93e3bd57972e94f9710744c8a9",
+      "reason": "Historical MEMORY.DMP launcher that depends on a temporary PowerShell analyzer"
+    }
+  ]
+}

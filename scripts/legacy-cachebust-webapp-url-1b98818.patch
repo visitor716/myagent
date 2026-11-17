@@ -1,0 +1,227 @@
+From 1b98818996d2a702d27f1d24f6acc8f95015f95a Mon Sep 17 00:00:00 2001
+From: vsitor716 <vsitor716@gmail.com>
+Date: Thu, 4 Jun 2026 16:11:23 +0800
+Subject: [PATCH] =?UTF-8?q?=E8=87=AA=E5=8A=A8=E6=8F=90=E4=BA=A4=E9=AA=8C?=
+ =?UTF-8?q?=E6=94=B6=E9=80=9A=E8=BF=87=E4=BB=BB=E5=8A=A1=E5=8F=98=E6=9B=B4?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+任务验收通过后由安全提交脚本提交当前工作区改动。脚本已先执行敏感文件检查和项目验证，避免把失败状态或明显敏感文件写入历史。
+
+Constraint: 自动提交不得执行 push/reset/merge/clean
+
+Rejected: 仅让 Agent 按提示手写提交流程 | 容易遗漏验证或敏感文件检查
+
+Confidence: medium
+
+Scope-risk: moderate
+
+Directive: 自动提交前必须保留验证和敏感文件检查
+
+Tested: npm run type-check
+
+Tested: npm run build
+
+Tested: npm run test:unit
+---
+ scripts/notify-webapp-release.ts              |  6 +++--
+ .../webappReleaseNotificationService.ts       | 23 +++++++++++++++++++
+ src/telegram/commands/appCommand.ts           |  7 ++++--
+ src/telegram/handlers/safetyHandler.ts        | 18 ++++++++++++++-
+ tests/unit/appCommand.test.ts                 |  6 +++--
+ .../webappReleaseNotificationService.test.ts  | 10 ++++++++
+ 6 files changed, 63 insertions(+), 7 deletions(-)
+
+diff --git a/scripts/notify-webapp-release.ts b/scripts/notify-webapp-release.ts
+index 679a8ae..040f9a6 100644
+--- a/scripts/notify-webapp-release.ts
++++ b/scripts/notify-webapp-release.ts
+@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
+ import { fileURLToPath } from 'node:url';
+ import { Telegraf } from 'telegraf';
+ import {
++  buildCacheBustedWebappUrl,
+   buildWebappReleaseNotificationMessage,
+   buildWebappReleaseNotificationState,
+   getLatestReleaseNotes,
+@@ -200,6 +201,7 @@ async function main(): Promise<void> {
+   }
+ 
+   const message = buildWebappReleaseNotificationMessage(releaseInfo);
++  const buttonWebappUrl = buildCacheBustedWebappUrl(webappUrl);
+   if (dryRun) {
+     console.log(message);
+     return;
+@@ -215,8 +217,8 @@ async function main(): Promise<void> {
+     disable_web_page_preview: true,
+     reply_markup: {
+       inline_keyboard: [
+-        [{ text: '打开最新版控制台', web_app: { url: webappUrl } }],
+-        [{ text: '浏览器打开链接', url: webappUrl }],
++        [{ text: '打开最新版控制台', web_app: { url: buttonWebappUrl } }],
++        [{ text: '浏览器打开链接', url: buttonWebappUrl }],
+       ],
+     },
+   });
+diff --git a/src/services/webappReleaseNotificationService.ts b/src/services/webappReleaseNotificationService.ts
+index 09c6e35..72f7d5c 100644
+--- a/src/services/webappReleaseNotificationService.ts
++++ b/src/services/webappReleaseNotificationService.ts
+@@ -61,6 +61,29 @@ export interface WebappAppCommitInfo {
+   commitTime: string;
+ }
+ 
++export function buildCacheBustedWebappUrl(
++  webappUrl: string,
++  cacheBustValue: number | string = Date.now()
++): string {
++  const trimmedUrl = webappUrl.trim();
++  if (!trimmedUrl) {
++    return trimmedUrl;
++  }
++
++  const cacheBust = String(cacheBustValue);
++  try {
++    const parsedUrl = new URL(trimmedUrl);
++    parsedUrl.searchParams.set('v', cacheBust);
++    return parsedUrl.toString();
++  } catch {
++    const hashIndex = trimmedUrl.indexOf('#');
++    const beforeHash = hashIndex >= 0 ? trimmedUrl.slice(0, hashIndex) : trimmedUrl;
++    const hash = hashIndex >= 0 ? trimmedUrl.slice(hashIndex) : '';
++    const separator = beforeHash.includes('?') ? '&' : '?';
++    return `${beforeHash}${separator}v=${encodeURIComponent(cacheBust)}${hash}`;
++  }
++}
++
+ export function formatWebappReleaseVersion(packageVersion: string): string {
+   const normalizedPackageVersion = packageVersion.trim().replace(/^v/i, '');
+   return normalizedPackageVersion ? `v${normalizedPackageVersion}` : 'v0.0.0';
+diff --git a/src/telegram/commands/appCommand.ts b/src/telegram/commands/appCommand.ts
+index 823720b..1b60aa9 100644
+--- a/src/telegram/commands/appCommand.ts
++++ b/src/telegram/commands/appCommand.ts
+@@ -4,6 +4,7 @@ import path from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import {
+   buildWebappAppCommandMessage,
++  buildCacheBustedWebappUrl,
+   getCurrentCommitInfo,
+   getCurrentGitBranch,
+   getLatestReleaseNotes,
+@@ -87,12 +88,14 @@ export function registerAppCommands(bot: Telegraf<Context>, deps: AppCommandDeps
+       return;
+     }
+ 
++    const buttonWebappUrl = buildCacheBustedWebappUrl(webappUrl);
++
+     await ctx.reply(message, {
+       link_preview_options: { is_disabled: true },
+       reply_markup: {
+         inline_keyboard: [
+-          [{ text: '打开控制台', web_app: { url: webappUrl } }],
+-          [{ text: '浏览器打开链接', url: webappUrl }],
++          [{ text: '打开控制台', web_app: { url: buttonWebappUrl } }],
++          [{ text: '浏览器打开链接', url: buttonWebappUrl }],
+           [{ text: '部署最新 App', callback_data: 'confirm_deploy_app' }],
+         ],
+       },
+diff --git a/src/telegram/handlers/safetyHandler.ts b/src/telegram/handlers/safetyHandler.ts
+index 17c7b17..306f3a2 100644
+--- a/src/telegram/handlers/safetyHandler.ts
++++ b/src/telegram/handlers/safetyHandler.ts
+@@ -6,6 +6,7 @@ import path from 'node:path';
+ import fs from 'node:fs';
+ import { execFile, spawn } from 'node:child_process';
+ import { homedir } from 'node:os';
++import { buildCacheBustedWebappUrl } from '../../services/webappReleaseNotificationService.js';
+ 
+ // 安全操作相关
+ const SAFE_MODE_FLAG_PATH = path.join(process.cwd(), 'data', 'safe-mode.flag');
+@@ -33,6 +34,11 @@ function formatScriptOutput(output: string, maxLen: number = 3500): string {
+     : output;
+ }
+ 
++function readCurrentWebappUrl(): string | undefined {
++  const webappUrl = process.env.TG_WEBAPP_URL?.trim();
++  return webappUrl ? buildCacheBustedWebappUrl(webappUrl) : undefined;
++}
++
+ export function buildConfirmKeyboard(action: string): any {
+   return Markup.inlineKeyboard([
+     [
+@@ -94,9 +100,19 @@ export async function handleSafetyActions(ctx: Context, userId: number, action:
+     } catch (error) {
+       const errMsg = error instanceof Error ? error.message : String(error);
+       logger.error('Deploy latest app failed', { error: errMsg });
++      const currentWebappUrl = readCurrentWebappUrl();
+       await safeReply(
+         ctx,
+-        `❌ 最新版本部署失败\n\n\`\`\`\n${formatScriptOutput(errMsg)}\n\`\`\``
++        `❌ 最新版本部署失败\n\n\`\`\`\n${formatScriptOutput(errMsg)}\n\`\`\``,
++        currentWebappUrl ? {
++          link_preview_options: { is_disabled: true },
++          reply_markup: {
++            inline_keyboard: [
++              [{ text: '打开当前控制台', web_app: { url: currentWebappUrl } }],
++              [{ text: '浏览器打开链接', url: currentWebappUrl }],
++            ],
++          },
++        } : {}
+       );
+     }
+   } else if (action === 'stop') {
+diff --git a/tests/unit/appCommand.test.ts b/tests/unit/appCommand.test.ts
+index ec86cb3..167f4e2 100644
+--- a/tests/unit/appCommand.test.ts
++++ b/tests/unit/appCommand.test.ts
+@@ -69,13 +69,15 @@ describe('appCommand', () => {
+               expect.arrayContaining([
+                 expect.objectContaining({
+                   text: '打开控制台',
+-                  web_app: { url: 'https://example.com/webapp' },
++                  web_app: {
++                    url: expect.stringMatching(/^https:\/\/example\.com\/webapp\?v=\d+$/),
++                  },
+                 }),
+               ]),
+               expect.arrayContaining([
+                 expect.objectContaining({
+                   text: '浏览器打开链接',
+-                  url: 'https://example.com/webapp',
++                  url: expect.stringMatching(/^https:\/\/example\.com\/webapp\?v=\d+$/),
+                 }),
+               ]),
+               expect.arrayContaining([
+diff --git a/tests/unit/webappReleaseNotificationService.test.ts b/tests/unit/webappReleaseNotificationService.test.ts
+index b9df0f1..0fab46b 100644
+--- a/tests/unit/webappReleaseNotificationService.test.ts
++++ b/tests/unit/webappReleaseNotificationService.test.ts
+@@ -4,6 +4,7 @@ vi.mock('node:child_process', () => ({
+ }));
+ import * as childProcess from 'node:child_process';
+ import {
++  buildCacheBustedWebappUrl,
+   buildWebappAppCommandMessage,
+   buildWebappReleaseNotificationMessage,
+   buildWebappReleaseNotificationState,
+@@ -26,6 +27,15 @@ const releaseInfo = {
+ };
+ 
+ describe('webappReleaseNotificationService', () => {
++  it('adds a cache-busting query parameter to WebApp button URLs', () => {
++    expect(buildCacheBustedWebappUrl('https://example.trycloudflare.com/app', 1780560000000)).toBe(
++      'https://example.trycloudflare.com/app?v=1780560000000'
++    );
++    expect(buildCacheBustedWebappUrl('https://example.trycloudflare.com/app?mode=web#tgWebAppData=abc', 'fresh')).toBe(
++      'https://example.trycloudflare.com/app?mode=web&v=fresh#tgWebAppData=abc'
++    );
++  });
++
+   it('formats package version without branch or commit fingerprint', () => {
+     expect(formatWebappReleaseVersion('1.0.0')).toBe('v1.0.0');
+     expect(formatWebappReleaseVersion('v2.3.4')).toBe('v2.3.4');
+-- 
+2.43.0
+

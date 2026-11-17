@@ -1,0 +1,6 @@
+interface:
+  display_name: "My Workflows"
+  short_description: "Coordinate tg-agent-gateway delivery: cx1 planning, cx2 orchestration and read-only review, visible cc3-cc10 worker execution, cc2 observer coverage, and master integration after REVIEW PASS."
+  default_prompt: "Use $my-workflows for tg-agent-gateway cx1->cx2->worker->observer->cx2 review->master integration workflows. Load the referenced worker-dispatch, review-integration, or handoff template files only when that lane is active."
+policy:
+  allow_implicit_invocation: true

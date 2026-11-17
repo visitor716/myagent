@@ -1,6 +1,6 @@
 ---
 name: clash-proxy
-description: "Diagnose and safely configure Windows and WSL proxy networking. Use when the user mentions Windows proxy, WSL proxy, Clash, Clash Verge, Mihomo, sing-box, V2Ray, system proxy, WinHTTP, TUN, DNS hijack, aTrust, 深信服/Sangfor VPN, company intranet split routing, 企业微信内网访问, Clash/aTrust conflicts, http_proxy/https_proxy/all_proxy, tmux proxy inheritance, proxy region policy such as US-first Japan-fallback no-Hong-Kong, or asks about Windows/WSL 网络代理/代理软件/代理环境."
+description: "Diagnose and safely configure Windows and WSL proxy networking. Use when the user mentions Windows proxy, WSL proxy, Clash, Clash Verge, Mihomo, sing-box, V2Ray, system proxy, WinHTTP, TUN, DNS hijack, aTrust, 深信服/Sangfor VPN, company intranet split routing, 企业微信内网访问, Clash/aTrust conflicts, TG Agent Gateway WebApp/Cloudflare tunnel routing, http_proxy/https_proxy/all_proxy, tmux proxy inheritance, proxy region policy such as US-first Japan-fallback no-Hong-Kong, or asks about Windows/WSL 网络代理/代理软件/代理环境."
 ---
 
 # Windows WSL Proxy
@@ -156,6 +156,50 @@ tr '\0' '\n' < "/proc/$pid/environ" | rg -i '^(https?_proxy|all_proxy|no_proxy)=
 ```
 
 Fix the launcher or service unit so it exports proxy variables before starting the app. Restart only the affected process after the user asks for runtime changes.
+
+### TG Agent Gateway Cloudflare WebApp
+
+When Telegram itself opens but the TG Agent Gateway WebApp does not, verify the
+WebApp project host separately. Telegram domain rules do not prove that the
+Cloudflare tunnel used by `TG_WEBAPP_URL` is routed through Clash.
+
+The live address observed on 2026-07-15 was:
+
+```text
+https://portable-median-header-viewing.trycloudflare.com
+```
+
+Quick Tunnel hostnames are temporary. Before diagnosing or adding a Clash rule,
+discover the current address instead of assuming the example is still valid:
+
+```bash
+rg -n '^TG_WEBAPP_URL=' /home/zhanxp/projects/tg-agent-gateway/.env
+tail -n 40 /home/zhanxp/projects/tg-agent-gateway/logs/runtime/webapp-url-monitor.log \
+  | rg 'WebApp URL healthy|public WebApp URL failed'
+```
+
+Routing checks:
+
+1. Extract the hostname from the current `TG_WEBAPP_URL`.
+2. Confirm the active Clash rules cover that exact hostname or the
+   `trycloudflare.com` suffix; do not rely only on Telegram rules.
+3. Prefer `DOMAIN-SUFFIX,trycloudflare.com,<proxy-group>` when all temporary TG
+   Gateway tunnel hosts should use the same proxy policy. Use an exact
+   `DOMAIN,<current-host>,<proxy-group>` rule only for narrow troubleshooting.
+4. Probe the same URL both directly and through the current live Clash mixed
+   port, then compare HTTP status and latency before changing rule order.
+5. If the tunnel hostname changes, update any exact-host rule and send a fresh
+   Telegram WebApp button; suffix rules survive hostname rotation.
+
+Example rule with a placeholder proxy group:
+
+```yaml
+rules:
+  - DOMAIN-SUFFIX,trycloudflare.com,<proxy-group>
+```
+
+Do not add the local Cloudflare origin (`127.0.0.1:3000`) to Clash. It is the
+tunnel's local upstream and should remain direct.
 
 ## Reporting
 

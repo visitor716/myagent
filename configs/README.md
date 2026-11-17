@@ -53,7 +53,28 @@ bash configs/sync.sh codex-full-auto
 `--dangerously-bypass-approvals-and-sandbox` 模式；`cfa` 保留为较安全的 `--full-auto`
 入口。
 
-### 4. 安装 Codex 自主管理配置
+### 4. 防止启动 MCP 配置复发
+
+启动前清理 WSL 与 Windows 两侧已禁用的 MCP 配置：
+
+```bash
+bash configs/sync.sh codex-mcp-guard
+```
+
+安装后的 Bash `codex`、`code x`、`cfast`、`cdeep` 和 `cremote` 入口会自动
+执行该检查；`validate` 也会拒绝包含 `chrome-devtools`、`context7` 或启用
+Apps/MCP Apps 的配置。
+
+为 Codex App 和后台 app-server 安装配置变更监视器：
+
+```bash
+bash configs/sync.sh codex-mcp-guard-install
+```
+
+`codex-mcp-guard.path` 会监视 WSL 活跃的 `~/.codex/config.toml`；更新、恢复
+或 Windows/App 同步重新写入禁用 MCP 后，会立即触发并清理两侧配置。
+
+### 5. 安装 Codex 自主管理配置
 
 ```bash
 bash configs/sync.sh codex-autonomy

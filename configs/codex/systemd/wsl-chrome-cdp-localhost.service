@@ -1,0 +1,7 @@
+[Unit]
+Description=Forward WSL Chrome CDP to the existing Windows relay
+
+[Service]
+ExecStart=/usr/bin/bash /home/zhanxp/projects/myagent/scripts/wsl-chrome-cdp-localhost.sh
+Restart=on-failure
+RestartSec=2

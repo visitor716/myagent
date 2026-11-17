@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch Codex config for forbidden startup MCP configuration
+
+[Path]
+PathChanged=%h/.codex/config.toml
+Unit=codex-mcp-guard.service
+
+[Install]
+WantedBy=default.target

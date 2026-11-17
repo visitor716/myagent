@@ -21,10 +21,11 @@ CLAUDE_SOURCE_DIR="$SCRIPT_DIR/claude code"
 CLAUDE_SOURCE="$CLAUDE_SOURCE_DIR/settings.json"
 CLAUDE_CONFIG_SOURCE="$CLAUDE_SOURCE_DIR/config.json"
 CLAUDE_GLOBAL_SOURCE="$CLAUDE_SOURCE_DIR/claude.json"
-CODEX_RUNTIME="$HOME/.codex/config.toml"
+CODEX_RUNTIME="${CODEX_RUNTIME:-$HOME/.codex/config.toml}"
 CODEX_RUNTIME_DIR="$HOME/.codex"
-CODEX_SOURCE="$SCRIPT_DIR/codex/config.toml"
-CODEX_RUNTIME_BACKUP_DIR="$SCRIPT_DIR/codex/runtime"
+CODEX_SOURCE="${CODEX_SOURCE:-$SCRIPT_DIR/codex/config.toml}"
+CODEX_RUNTIME_BACKUP_DIR="${CODEX_RUNTIME_BACKUP_DIR:-$SCRIPT_DIR/codex/runtime}"
+CODEX_WINDOWS_RUNTIME="${CODEX_WINDOWS_RUNTIME:-/mnt/c/Users/${WINDOWS_USER:-${USER:-$(id -un)}}/.codex/config.toml}"
 CODEX_ALIAS_RUNTIME="$HOME/.bash_aliases"
 CODEX_ALIAS_SOURCE="$SCRIPT_DIR/codex/bash_aliases.full-auto.sh"
 CODEX_MEMORY_SOURCE="$PROJECT_DIR/docs/agent-memory/codex-operating-memory.md"
@@ -282,6 +283,88 @@ remove_codex_unsupported_startup_mcp_in_place() {
     done
 }
 
+sanitize_codex_startup_mcp_in_place() {
+    local file="$1"
+
+    upsert_toml_table_key_in_place "$file" "[features]" "apps" "false"
+    upsert_toml_table_key_in_place "$file" "[features]" "enable_mcp_apps" "false"
+    remove_codex_unsupported_startup_mcp_in_place "$file"
+}
+
+install_codex_mcp_guard_config() {
+    local target="$1"
+    local label="$2"
+    local mode="$3"
+    local tmp_file
+
+    if [[ ! -f "$target" ]]; then
+        log_warn "$label 不存在，跳过: $target"
+        return 0
+    fi
+
+    tmp_file="$(mktemp)"
+    cp "$target" "$tmp_file"
+    sanitize_codex_startup_mcp_in_place "$tmp_file"
+    write_if_changed "$tmp_file" "$target" "$label" "$mode"
+}
+
+validate_codex_mcp_policy() {
+    local file="$1"
+    local table
+
+    [[ -f "$file" ]] || return 0
+
+    for table in "${CODEX_DISABLED_STARTUP_MCP_TABLES[@]}"; do
+        if grep -Fxq "$table" "$file"; then
+            log_error "Codex MCP 策略违规: $file 包含 $table"
+            return 1
+        fi
+    done
+
+    if grep -Eq '^[[:space:]]*(apps|enable_mcp_apps)[[:space:]]*=[[:space:]]*true([[:space:]]*(#.*)?)?$' "$file"; then
+        log_error "Codex MCP 策略违规: $file 启用了 Codex Apps/MCP Apps"
+        return 1
+    fi
+
+    return 0
+}
+
+cmd_codex_mcp_guard() {
+    log_info "清理 Codex 启动 MCP 配置..."
+    install_codex_mcp_guard_config "$CODEX_RUNTIME" "WSL Codex MCP 配置" "600"
+    install_codex_mcp_guard_config "$CODEX_WINDOWS_RUNTIME" "Windows Codex MCP 配置" ""
+    log_success "Codex 启动 MCP 防复发检查完成"
+}
+
+install_codex_mcp_guard_watcher() {
+    local service_source="$CODEX_SYSTEMD_SOURCE_DIR/codex-mcp-guard.service"
+    local path_source="$CODEX_SYSTEMD_SOURCE_DIR/codex-mcp-guard.path"
+
+    if [[ ! -f "$service_source" || ! -f "$path_source" ]]; then
+        log_error "Codex MCP guard systemd 模板不存在: $CODEX_SYSTEMD_SOURCE_DIR"
+        return 1
+    fi
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        log_warn "未找到 systemctl，跳过 Codex MCP guard watcher 安装"
+        return 0
+    fi
+
+    mkdir -p "$CODEX_SYSTEMD_RUNTIME_DIR"
+    ln -sfn "$service_source" "$CODEX_SYSTEMD_RUNTIME_DIR/codex-mcp-guard.service"
+    ln -sfn "$path_source" "$CODEX_SYSTEMD_RUNTIME_DIR/codex-mcp-guard.path"
+
+    systemctl --user daemon-reload
+    systemctl --user enable --now codex-mcp-guard.path
+    systemctl --user restart codex-mcp-guard.path
+    log_success "Codex MCP guard watcher 已启用: codex-mcp-guard.path"
+}
+
+cmd_codex_mcp_guard_install() {
+    cmd_codex_mcp_guard
+    install_codex_mcp_guard_watcher
+}
+
 install_codex_full_auto_config() {
     local target="$1"
     local label="$2"
@@ -299,7 +382,7 @@ install_codex_full_auto_config() {
     upsert_toml_root_key_in_place "$tmp_file" "sandbox_mode" '"danger-full-access"'
     upsert_toml_root_key_in_place "$tmp_file" "suppress_unstable_features_warning" "true"
     upsert_toml_table_key_in_place "$tmp_file" "[notice]" "hide_full_access_warning" "true"
-    remove_codex_unsupported_startup_mcp_in_place "$tmp_file"
+    sanitize_codex_startup_mcp_in_place "$tmp_file"
     write_if_changed "$tmp_file" "$target" "$label" "$mode"
 }
 
@@ -434,6 +517,11 @@ cmd_codex_backup_runtime() {
         log_success "已清理过期 OAuth 授权 URL 规则: rules/default.rules"
     fi
 
+    if [[ -f "$CODEX_RUNTIME_BACKUP_DIR/config.toml" ]]; then
+        sanitize_codex_startup_mcp_in_place "$CODEX_RUNTIME_BACKUP_DIR/config.toml"
+        log_success "已清理运行时备份中的启动 MCP 配置: config.toml"
+    fi
+
     {
         echo "# Codex Runtime Backup"
         echo
@@ -515,6 +603,7 @@ cmd_backup() {
     # 备份 Codex
     if [[ -f "$CODEX_RUNTIME" ]]; then
         cp "$CODEX_RUNTIME" "$CODEX_SOURCE"
+        sanitize_codex_startup_mcp_in_place "$CODEX_SOURCE"
         log_success "Codex 配置已备份: $CODEX_SOURCE"
     else
         log_error "Codex 运行时配置不存在: $CODEX_RUNTIME"
@@ -551,6 +640,7 @@ cmd_restore() {
             log_info "已创建原配置备份"
         fi
         cp "$CODEX_SOURCE" "$CODEX_RUNTIME"
+        sanitize_codex_startup_mcp_in_place "$CODEX_RUNTIME"
         log_success "Codex 配置已恢复到: $CODEX_RUNTIME"
     else
         log_error "myagent 中不存在 Codex 配置: $CODEX_SOURCE"
@@ -563,6 +653,7 @@ cmd_codex_full_auto() {
 
     install_codex_full_auto_config "$CODEX_SOURCE" "Codex 模板配置" "644"
     install_codex_full_auto_config "$CODEX_RUNTIME" "Codex 运行时配置" "600"
+    install_codex_mcp_guard_config "$CODEX_WINDOWS_RUNTIME" "Windows Codex MCP 配置" ""
     install_codex_full_auto_aliases
 
     log_success "Codex 全自动默认入口已安装"
@@ -573,6 +664,7 @@ cmd_codex_autonomy() {
     cmd_codex_full_auto
     install_codex_memory_link
     install_codex_heartbeat_timer
+    install_codex_mcp_guard_watcher
     "$PROJECT_DIR/scripts/apps/codex/codex_heartbeat.py" --quiet || log_warn "首次 heartbeat 生成失败，可稍后运行: cheartbeat"
 
     log_success "Codex 自主管理配置已安装"
@@ -604,9 +696,26 @@ cmd_validate() {
             log_error "Codex 配置格式错误: $CODEX_SOURCE"
             has_error=1
         fi
+
+        if validate_codex_mcp_policy "$CODEX_SOURCE"; then
+            log_success "Codex 模板符合启动 MCP 策略"
+        else
+            has_error=1
+        fi
     else
         log_warn "Codex 配置不存在: $CODEX_SOURCE"
     fi
+
+    local codex_policy_file
+    for codex_policy_file in "$CODEX_RUNTIME" "$CODEX_WINDOWS_RUNTIME" "$CODEX_RUNTIME_BACKUP_DIR/config.toml"; do
+        if validate_codex_mcp_policy "$codex_policy_file"; then
+            if [[ -f "$codex_policy_file" ]]; then
+                log_success "Codex 配置符合启动 MCP 策略: $codex_policy_file"
+            fi
+        else
+            has_error=1
+        fi
+    done
 
     # 验证 Codex bash 入口模板
     if [[ -f "$CODEX_ALIAS_SOURCE" ]]; then
@@ -650,6 +759,8 @@ show_help() {
     echo "  codex-full-auto  安装 Codex 全自动默认入口到模板和运行时"
     echo "  codex-autonomy   安装 Codex 全自动入口、长期记忆和 heartbeat timer"
     echo "  codex-watchdog-install  安装机器级 Codex app-server watchdog"
+    echo "  codex-mcp-guard  清理 WSL/Windows 运行时中的禁用 MCP，并关闭 Apps"
+    echo "  codex-mcp-guard-install  安装配置文件变更监视器并立即执行 guard"
     echo "  validate         验证配置格式"
     echo "  help             显示此帮助信息"
     echo ""
@@ -660,6 +771,8 @@ show_help() {
     echo "  $0 codex-full-auto"
     echo "  $0 codex-autonomy"
     echo "  $0 codex-watchdog-install"
+    echo "  $0 codex-mcp-guard"
+    echo "  $0 codex-mcp-guard-install"
     echo "  $0 validate"
 }
 
@@ -685,6 +798,12 @@ case "${1:-help}" in
         ;;
     codex-watchdog-install)
         cmd_codex_watchdog_install
+        ;;
+    codex-mcp-guard)
+        cmd_codex_mcp_guard
+        ;;
+    codex-mcp-guard-install)
+        cmd_codex_mcp_guard_install
         ;;
     validate)
         cmd_validate

@@ -5,17 +5,18 @@ usage() {
   cat <<'EOF'
 Usage: codex_app_server_watchdog.sh [--once|--loop|--no-remote|--help]
 
-Checks the local Codex app-server daemon and remote-control process state. If
-the daemon is down, stale, or the remote-control app-server process is missing,
-the script restarts the managed app-server with rate limiting. Version changes
-are deferred until a natural restart so active sessions are not interrupted.
+Checks the local Codex app-server daemon and remote-control process state. A
+live control socket is a hard continuity boundary. Recovery is allowed only
+after the daemon probe and socket are both unavailable for consecutive checks.
 
 Environment:
   CODEX_WATCHDOG_WORKDIR            Working directory for daemon starts.
   CODEX_WATCHDOG_INTERVAL           Loop interval in seconds. Default: 60.
   CODEX_WATCHDOG_REMOTE_INTERVAL    Remote-control process check interval. Default: 60.
-  CODEX_WATCHDOG_RESTART_COOLDOWN   Minimum seconds between restarts. Default: 120.
-  CODEX_WATCHDOG_FAILURE_THRESHOLD  Consecutive failed probes before restarting a live socket. Default: 3.
+  CODEX_WATCHDOG_RESTART_COOLDOWN   Minimum seconds between recovery attempts. Default: 30.
+  CODEX_WATCHDOG_FAILURE_THRESHOLD  Confirmed unavailable probes before recovery. Default: 3.
+  CODEX_WATCHDOG_UPDATE_MODE        manual (daemon start) or bootstrap. Default: manual.
+  CODEX_WATCHDOG_SOCKET_PATH        Override the control socket path for isolated tests.
   CODEX_WATCHDOG_LOG                Log file path.
   CODEX_WATCHDOG_ENV_FILE           Optional env file to source, default ~/.codex/.env.
 EOF
@@ -37,6 +38,15 @@ load_env() {
     # shellcheck disable=SC1090
     . "$ENV_FILE"
     set +a
+  fi
+
+  # The watchdog intentionally bypasses codex-proxy-wrapper. Load the shared
+  # WSL proxy helper so a newly started daemon inherits the Windows proxy.
+  local proxy_helper="${WSL_PROXY_HELPER:-$HOME/.wsl-proxy.env}"
+  if [[ -f "$proxy_helper" ]]; then
+    # shellcheck disable=SC1090
+    . "$proxy_helper"
+    WSL_PROXY_QUIET=1 proxyon 2>/dev/null || true
   fi
 }
 
@@ -105,162 +115,176 @@ sys.exit(0 if app and expected and app != expected else 1)
 '
 }
 
-defer_daemon_restart_after_probe_failure() {
+record_confirmed_unavailable_probe() {
+  local remote_missing="${1:-1}"
   local threshold="${CODEX_WATCHDOG_FAILURE_THRESHOLD:-3}"
 
   if [[ ! "$threshold" =~ ^[1-9][0-9]*$ ]]; then
     threshold=3
   fi
-  DAEMON_PROBE_FAILURE_THRESHOLD_EFFECTIVE="$threshold"
+  UNAVAILABLE_PROBE_FAILURE_THRESHOLD_EFFECTIVE="$threshold"
 
-  if [[ ! "${DAEMON_PROBE_FAILURE_COUNT:-}" =~ ^[0-9]+$ ]]; then
-    DAEMON_PROBE_FAILURE_COUNT=0
+  if [[ ! "${UNAVAILABLE_PROBE_FAILURE_COUNT:-}" =~ ^[0-9]+$ ]]; then
+    UNAVAILABLE_PROBE_FAILURE_COUNT=0
   fi
-  DAEMON_PROBE_FAILURE_COUNT=$((DAEMON_PROBE_FAILURE_COUNT + 1))
+  if [[ ! "${REMOTE_CONTROL_MISSING_COUNT:-}" =~ ^[0-9]+$ ]]; then
+    REMOTE_CONTROL_MISSING_COUNT=0
+  fi
 
-  process_topology_is_healthy || return 1
-  ((DAEMON_PROBE_FAILURE_COUNT < threshold))
-}
+  UNAVAILABLE_PROBE_FAILURE_COUNT=$((UNAVAILABLE_PROBE_FAILURE_COUNT + 1))
+  if [[ "$remote_missing" == "1" ]]; then
+    REMOTE_CONTROL_MISSING_COUNT=$((REMOTE_CONTROL_MISSING_COUNT + 1))
+  else
+    REMOTE_CONTROL_MISSING_COUNT=0
+  fi
 
-reset_daemon_probe_failures() {
-  DAEMON_PROBE_FAILURE_COUNT=0
-}
-
-# Check if any running app-server process is orphaned.
-# A listening control socket is sufficient evidence of an owned, usable
-# service. The pid-update-loop may be absent after restart or WSL recovery; that
-# degrades automatic updates but must not classify the active session as orphan.
-any_app_server_process_is_orphan() {
-  local app_pids=()
-  local pid
-
-  while IFS= read -r pid; do
-    [[ -r "/proc/$pid/cmdline" ]] || continue
-    app_pids+=("$pid")
-  done < <(pgrep -f 'codex app-server( |$)' 2>/dev/null || true)
-
-  # No app-server processes at all = not orphaned, just absent
-  ((${#app_pids[@]})) || return 1
-
-  socket_is_listening && return 1
+  ((UNAVAILABLE_PROBE_FAILURE_COUNT >= threshold)) || return 1
+  if [[ "$remote_missing" == "1" ]]; then
+    ((REMOTE_CONTROL_MISSING_COUNT >= threshold)) || return 1
+  fi
   return 0
 }
 
-# Check if the socket file is stale (exists but no process is listening).
-# WSL unclean shutdowns can leave behind a socket file with no server.
-socket_is_stale() {
-  local sock="$HOME/.codex/app-server-control/app-server-control.sock"
-  [[ -S "$sock" ]] || return 1          # no socket = not stale
-  ss -lx 2>/dev/null | grep -qF "$sock" && return 1  # socket is listening = not stale
-  return 0  # socket file exists but nothing is listening = stale
+reset_unavailable_probe_failures() {
+  UNAVAILABLE_PROBE_FAILURE_COUNT=0
+  REMOTE_CONTROL_MISSING_COUNT=0
 }
 
+# Return 0 for listening, 1 for confirmed unavailable, and 2 when `ss` could
+# not provide a trustworthy answer. Unknown state is never safe for recovery.
 socket_is_listening() {
-  local sock="$HOME/.codex/app-server-control/app-server-control.sock"
+  local sock="${SOCKET_PATH:-$HOME/.codex/app-server-control/app-server-control.sock}"
+  local listeners
+
   [[ -S "$sock" ]] || return 1
-  ss -lx 2>/dev/null | grep -qF "$sock"
+  if ! listeners="$(ss -lxH 2>/dev/null)"; then
+    return 2
+  fi
+  if grep -Fq -- "$sock" <<<"$listeners"; then
+    return 0
+  fi
+  return 1
 }
 
-destructive_cleanup_is_safe() {
-  if socket_is_listening; then
-    log WARN "stale-process cleanup deferred: control socket is still listening"
-    return 1
-  fi
-  return 0
+# A stale socket is a socket inode with a successful `ss` snapshot but no
+# listener. Probe errors deliberately do not classify the inode as stale.
+socket_is_stale() {
+  local sock="${SOCKET_PATH:-$HOME/.codex/app-server-control/app-server-control.sock}"
+  local status
+
+  [[ -S "$sock" ]] || return 1
+  socket_is_listening
+  status=$?
+  [[ "$status" == "1" ]]
 }
 
-restart_allowed() {
-  local now last
-  now="$(date +%s)"
-  last="$(cat "$LAST_RESTART_FILE" 2>/dev/null || printf '0')"
+remote_control_argv_matches() {
+  local executable="${1:-}" subcommand="${2:-}" arg
+  local -a argv=("$@")
+  local index has_remote_control=0 has_listen=0
 
-  if [[ "$last" =~ ^[0-9]+$ ]] && ((now - last < RESTART_COOLDOWN_SECONDS)); then
-    # Always bypass cooldown if no app-server processes exist (fresh start / crash)
-    if ! pgrep -f '^/home/zhanxp/.codex/packages/standalone/current/codex app-server( |$)' >/dev/null 2>&1; then
-      log WARN "restart cooldown bypassed: no codex app-server processes are running"
-      printf '%s\n' "$now" > "$LAST_RESTART_FILE"
-      return 0
-    fi
-
-    # Bypass cooldown if orphan processes detected (WSL unclean shutdown scenario)
-    if any_app_server_process_is_orphan; then
-      log WARN "restart cooldown bypassed: orphan app-server processes detected"
-      printf '%s\n' "$now" > "$LAST_RESTART_FILE"
-      return 0
-    fi
-
-    # Bypass cooldown if socket is stale (leftover from killed VM)
-    if socket_is_stale; then
-      log WARN "restart cooldown bypassed: stale socket file detected"
-      printf '%s\n' "$now" > "$LAST_RESTART_FILE"
-      return 0
-    fi
-
-    log WARN "restart skipped: cooldown active (${now}-${last}<${RESTART_COOLDOWN_SECONDS})"
-    return 1
+  if [[ "${executable##*/}" == "codex" && "$subcommand" == "app-server" && "${argv[2]:-}" != "daemon" ]]; then
+    for ((index = 2; index < ${#argv[@]}; index++)); do
+      arg="${argv[$index]}"
+      [[ "$arg" == "--remote-control" || "$arg" == --remote-control=* ]] && has_remote_control=1
+      [[ "$arg" == "--listen" || "$arg" == --listen=* ]] && has_listen=1
+    done
+    ((has_remote_control == 1 && has_listen == 1)) && return 0
   fi
 
-  printf '%s\n' "$now" > "$LAST_RESTART_FILE"
-  return 0
+  # Support an exec-a test/process marker where the semantic command is held in
+  # argv[0]. This still matches arguments, never a particular release path.
+  if [[ "$executable" == *"/codex app-server "* && "$executable" != *"/codex app-server daemon "* && "$executable" == *"--remote-control"* && "$executable" == *"--listen"* ]]; then
+    return 0
+  fi
+  return 1
+}
+
+pid_update_loop_argv_matches() {
+  local executable="${1:-}" subcommand="${2:-}" daemon="${3:-}" action="${4:-}"
+
+  if [[ "${executable##*/}" == "codex" && "$subcommand" == "app-server" && "$daemon" == "daemon" && "$action" == "pid-update-loop" ]]; then
+    return 0
+  fi
+  if [[ "$executable" == *"/codex app-server daemon pid-update-loop"* ]]; then
+    return 0
+  fi
+  return 1
+}
+
+process_pid_matches() {
+  local pid="$1" matcher="$2"
+  local -a argv=()
+
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  mapfile -d '' -t argv < "/proc/$pid/cmdline"
+  ((${#argv[@]})) || return 1
+  "$matcher" "${argv[@]}"
 }
 
 remote_control_process_is_healthy() {
-  local pid cmd
+  local pid
 
   while IFS= read -r pid; do
-    [[ -r "/proc/$pid/cmdline" ]] || continue
-    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
-    case "$cmd" in
-      "$MANAGED_CODEX_APP app-server "*--remote-control*)
-        return 0
-        ;;
-    esac
-  done < <(pgrep -f 'codex app-server' || true)
-
+    process_pid_matches "$pid" remote_control_argv_matches && return 0
+  done < <(pgrep -f 'codex.*app-server' 2>/dev/null || true)
   return 1
 }
 
-pid_update_loop_is_healthy() {
-  local pid cmd
+pid_update_loop_is_running() {
+  local pid
 
   while IFS= read -r pid; do
-    [[ -r "/proc/$pid/cmdline" ]] || continue
-    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
-    case "$cmd" in
-      "$MANAGED_CODEX_APP app-server daemon pid-update-loop "*|"$MANAGED_CODEX_APP app-server daemon pid-update-loop")
-        return 0
-        ;;
-    esac
-  done < <(pgrep -f 'codex app-server daemon pid-update-loop' || true)
-
+    process_pid_matches "$pid" pid_update_loop_argv_matches && return 0
+  done < <(pgrep -f 'codex.*app-server.*daemon.*pid-update-loop' 2>/dev/null || true)
   return 1
+}
+
+# Compatibility helper for older diagnostics. In manual-update mode absence is
+# expected; callers should use pid_update_loop_is_running when reporting state.
+pid_update_loop_is_healthy() {
+  if [[ "${UPDATE_MODE:-manual}" == "manual" ]]; then
+    ! pid_update_loop_is_running
+  else
+    pid_update_loop_is_running
+  fi
 }
 
 process_topology_is_healthy() {
   remote_control_process_is_healthy && socket_is_listening
 }
 
-ensure_remote_control_enabled() {
-  local output status
+destructive_cleanup_is_safe() {
+  local status
 
-  if process_topology_is_healthy; then
-    return 0
-  fi
-
-  output="$(run_codex 60 app-server daemon enable-remote-control)"
+  socket_is_listening
   status=$?
-  if ((status != 0)); then
-    log WARN "enable-remote-control failed: $(printf '%s' "$output" | compact_output)"
+  if ((status == 0)); then
+    log WARN "stale-process cleanup deferred: control socket is still listening"
     return 1
   fi
+  if ((status != 1)); then
+    log WARN "stale-process cleanup deferred: control socket state is unknown"
+    return 1
+  fi
+  return 0
+}
 
-  log INFO "enable-remote-control ok: $(printf '%s' "$output" | compact_output)"
-  sleep 1
-  process_topology_is_healthy
+managed_app_server_cmdline_is_exact() {
+  local pid="$1" cmd
+
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
+  case "$cmd" in
+    "$HOME/.codex/packages/standalone/current/codex app-server "*|"$HOME/.codex/packages/standalone/current/bin/codex app-server "*|"$HOME/.codex/packages/standalone/releases/"*"/bin/codex app-server "*|"$HOME/.codex/packages/standalone/releases/"*"/codex app-server "*)
+      return 0
+      ;;
+  esac
+  return 1
 }
 
 stop_matching_app_servers() {
-  local pid cmd alive=()
+  local pid alive=()
   local pids=()
 
   if ! destructive_cleanup_is_safe; then
@@ -268,14 +292,8 @@ stop_matching_app_servers() {
   fi
 
   while IFS= read -r pid; do
-    [[ -r "/proc/$pid/cmdline" ]] || continue
-    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
-    case "$cmd" in
-      "$MANAGED_CODEX_APP app-server "*|"$HOME/.codex/packages/standalone/releases/"*"/codex app-server "*)
-        pids+=("$pid")
-        ;;
-    esac
-  done < <(pgrep -f 'codex app-server' || true)
+    managed_app_server_cmdline_is_exact "$pid" && pids+=("$pid")
+  done < <(pgrep -f 'codex.*app-server' 2>/dev/null || true)
 
   if ((${#pids[@]} == 0)); then
     log WARN "no matching stale codex app-server processes found"
@@ -299,127 +317,69 @@ stop_matching_app_servers() {
   fi
 }
 
-restart_daemon() {
+recovery_allowed() {
+  local now last
+
+  now="$(date +%s)"
+  last="$(cat "$LAST_RESTART_FILE" 2>/dev/null || printf '0')"
+  if [[ "$last" =~ ^[0-9]+$ ]] && ((now - last < RESTART_COOLDOWN_SECONDS)); then
+    log WARN "recovery skipped: cooldown active (${now}-${last}<${RESTART_COOLDOWN_SECONDS})"
+    return 1
+  fi
+  printf '%s\n' "$now" > "$LAST_RESTART_FILE"
+  return 0
+}
+
+recover_unavailable_daemon() {
   local reason="$1"
-  local output status summary enable_output enable_status verify_output
-  local restart_ok=0
-  local initial_action="restart"
+  local action output status summary verify_output socket_status
+  local sock="${SOCKET_PATH:-$HOME/.codex/app-server-control/app-server-control.sock}"
 
-  if ! restart_allowed; then
+  if ! destructive_cleanup_is_safe; then
+    log WARN "recovery aborted: the control socket is live or its state is unknown"
     return 1
   fi
+  recovery_allowed || return 1
 
-  log WARN "restarting codex app-server: $reason"
-
-  # If socket is stale, clean it before attempting restart
-  if socket_is_stale; then
-    log WARN "removing stale socket before restart"
-    rm -f "$HOME/.codex/app-server-control/app-server-control.sock" 2>/dev/null || true
-  fi
-
-  if socket_is_listening; then
-    output="$(run_codex 60 app-server daemon restart)"
-  else
-    initial_action="bootstrap"
-    log INFO "no live control socket; using durable bootstrap for recovery"
-    if ! stop_matching_app_servers; then
-      log WARN "bootstrap deferred because stale-process cleanup is unsafe"
-      return 1
-    fi
-    output="$(run_codex 60 app-server daemon bootstrap --remote-control)"
-  fi
-  status=$?
-  summary="$(printf '%s' "$output" | compact_output)"
-
-  # daemon restart can fail because:
-  #   (a) old process is "not managed by daemon" → need bootstrap
-  #   (b) socket unreachable (WSL crash leftover) → need bootstrap
-  #   (c) other transient errors → retry with bootstrap
-  if [[ "$initial_action" == "bootstrap" ]] && ((status != 0)); then
-    log ERROR "bootstrap failed: $summary"
-    return 1
-  elif ((status != 0)) || [[ "$output" == *"not managed by codex app-server daemon"* ]]; then
-    log WARN "daemon restart failed or reported unmanaged; attempting bootstrap"
-    if ! stop_matching_app_servers; then
-      log WARN "bootstrap deferred to preserve the listening app-server session"
-      return 1
-    fi
-    output="$(run_codex 60 app-server daemon bootstrap --remote-control)"
-    status=$?
-    summary="$(printf '%s' "$output" | compact_output)"
-  fi
-
-  if ((status != 0)); then
-    log ERROR "restart/bootstrap failed: $summary"
-    return 1
-  fi
-
-  log INFO "restart/bootstrap ok: $summary"
-  restart_ok=1
-
-  enable_output="$(run_codex 60 app-server daemon enable-remote-control)"
-  enable_status=$?
-  if ((enable_status != 0)); then
-    log WARN "enable-remote-control failed (will retry): $(printf '%s' "$enable_output" | compact_output)"
-  else
-    log INFO "enable-remote-control ok: $(printf '%s' "$enable_output" | compact_output)"
-  fi
-
-  sleep 2
-
-  verify_output="$(run_codex "$COMMAND_TIMEOUT_SECONDS" app-server daemon version)"
-  if printf '%s' "$verify_output" | version_json_is_healthy; then
-    log INFO "daemon version healthy after restart: $(printf '%s' "$verify_output" | compact_output)"
-  else
-    log ERROR "daemon version still unhealthy after restart: $(printf '%s' "$verify_output" | compact_output)"
-    return 1
-  fi
-
-  if process_topology_is_healthy; then
-    log INFO "codex app-server process topology healthy after restart"
-    return 0
-  fi
-
-  # Topology incomplete after daemon restart — try bootstrap as fallback
-  # This handles the common case where daemon restart creates orphan processes
-  log WARN "topology incomplete after daemon restart; trying bootstrap fallback"
+  log WARN "recovering unavailable codex app-server: $reason"
   if ! stop_matching_app_servers; then
-    log WARN "bootstrap fallback deferred to preserve the listening app-server session"
+    log WARN "recovery aborted because stale-process cleanup is unsafe"
     return 1
   fi
-  output="$(run_codex 60 app-server daemon bootstrap --remote-control)"
+
+  if socket_is_stale; then
+    log WARN "removing confirmed stale control socket before recovery"
+    rm -f "$sock" 2>/dev/null || true
+  fi
+
+  if [[ "${UPDATE_MODE:-manual}" == "bootstrap" ]]; then
+    action="bootstrap --remote-control"
+    output="$(run_codex 60 app-server daemon bootstrap --remote-control)"
+  else
+    action="start"
+    output="$(run_codex 60 app-server daemon start)"
+  fi
   status=$?
   summary="$(printf '%s' "$output" | compact_output)"
-
   if ((status != 0)); then
-    log ERROR "bootstrap fallback failed: $summary"
+    log ERROR "daemon $action recovery failed: $summary"
     return 1
   fi
-  log INFO "bootstrap fallback ok: $summary"
-
-  enable_output="$(run_codex 60 app-server daemon enable-remote-control)"
-  enable_status=$?
-  if ((enable_status != 0)); then
-    log WARN "enable-remote-control after bootstrap failed: $(printf '%s' "$enable_output" | compact_output)"
-  else
-    log INFO "enable-remote-control after bootstrap ok: $(printf '%s' "$enable_output" | compact_output)"
-  fi
+  log INFO "daemon $action recovery command succeeded: $summary"
 
   sleep 2
+  socket_is_listening
+  socket_status=$?
+  if ((socket_status != 0)); then
+    log ERROR "control socket is still unavailable after daemon $action"
+    return 1
+  fi
 
   verify_output="$(run_codex "$COMMAND_TIMEOUT_SECONDS" app-server daemon version)"
   if printf '%s' "$verify_output" | version_json_is_healthy; then
-    log INFO "daemon version healthy after bootstrap: $(printf '%s' "$verify_output" | compact_output)"
+    log INFO "daemon version healthy after $action: $(printf '%s' "$verify_output" | compact_output)"
   else
-    log ERROR "daemon version still unhealthy after bootstrap: $(printf '%s' "$verify_output" | compact_output)"
-    return 1
+    log WARN "live control socket preserved although daemon version verification after $action was inconclusive"
   fi
-
-  if process_topology_is_healthy; then
-    log INFO "codex app-server process topology healthy after bootstrap"
-    return 0
-  fi
-
-  log ERROR "codex app-server process topology incomplete after bootstrap"
-  return 1
+  return 0
 }

@@ -1,0 +1,11 @@
+import {createRequire} from 'node:module';
+import {execFileSync} from 'node:child_process';
+import fs from 'node:fs';
+const require=createRequire('/home/zhanxp/projects/tg-agent-gateway/package.json');
+const root='/home/zhanxp/worktrees/tg-agent-gateway/agy-detail-master-20261114';
+const state='/home/zhanxp/.local/share/tg-gateway-reviews/agy-master-details-20261114';
+const commit=execFileSync('git',['-C',root,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
+const secret=fs.readFileSync(state+'/proxy-secret','utf8');
+Object.assign(process.env,{DOTENV_CONFIG_PATH:'/dev/null',TG_AGENT_GATEWAY_REVIEW_MODE:'1',TG_AGENT_GATEWAY_REVIEW_TASK_ID:'agy-master-details-20261114',TG_AGENT_GATEWAY_REVIEW_COMMIT:commit,TG_REVIEW_TRUSTED_PROXY_SECRET:secret,TG_AUTO_REVIEW_ENABLED:'false',RUNNER_MODE:'mock',TASK_QUEUE_AUTORUN:'false',MANAGER_BOT_TOKEN:'review-preview-placeholder',ADMIN_USER_ID:'1',WEBAPP_PORT:'43121',DATABASE_PATH:state+'/gateway.sqlite',TASK_MESSAGES_PATH:state+'/task-messages.json',DATA_DIR:state,LOG_DIR:state+'/logs'});
+process.chdir(root);
+await import(root+'/dist/index.js');

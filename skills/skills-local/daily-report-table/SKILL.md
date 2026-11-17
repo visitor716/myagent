@@ -18,6 +18,14 @@ Use this skill when the user pastes raw TCP 日报文本 and wants fixed table r
    - print a compact preview in the terminal, defaulting to summary mode for `wecom-html`
    - optionally generate a paste-ready chart column for the enterprise WeChat spot abnormal sheet
 
+## 日报转 OA 异常记录
+
+- 用户要求把日报自动填写到 OA「新建异常记录」时，读取并使用相邻的 [oa-exception-record-filler](../oa-exception-record-filler/SKILL.md)，不以生成本地表格代替真实填写。
+- 仅整理日报不代表授权写入 OA；用户明确要求填写时才执行，默认仅保存草稿，绝不提交。
+- OA 填写使用当前客户基地的真实配置与机台库；本 Skill 下方历史表格默认值不用于覆盖 OA 当前配置。
+- 执行顺序：aTrust VPN 就绪 → 专用浏览器登录 → 核对新建表单与设备 → 分阶段填写并回读 → 保存草稿 → 重新打开同一单据核验。
+- 企业微信要求扫码时，提供刚刷新并检查过的登录二维码截图；不发送过期图，不清除登录态。手机扫码后检查电脑端二维码页面，若出现登录确认按钮则核对并点击，验证跳转成功后继续同一任务；保存前检查是否已有对应草稿，避免重复创建。
+
 ## Follow-up shorthand
 
 - If the user first asks for the standard日报 table and then follows with `yes` / `继续` / `导出`, treat that as a request for the enterprise WeChat delivery bundle for the same raw text.

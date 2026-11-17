@@ -12,6 +12,7 @@ Environment=CODEX_WATCHDOG_INTERVAL=60
 Environment=CODEX_WATCHDOG_REMOTE_INTERVAL=60
 Environment=CODEX_WATCHDOG_RESTART_COOLDOWN=30
 Environment=CODEX_WATCHDOG_FAILURE_THRESHOLD=3
+Environment=CODEX_WATCHDOG_UPDATE_MODE=manual
 Environment=CODEX_WATCHDOG_LOG=%h/.codex/log/codex-app-server-watchdog.log
 Environment=CODEX_BIN=%h/.local/bin/codex-bin
 ExecStart=%h/.local/libexec/codex-app-server-watchdog/codex_app_server_watchdog.sh --loop
